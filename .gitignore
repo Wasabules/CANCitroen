@@ -1,0 +1,45 @@
+# ── Données locales (non versionnées) ─────────────────────────────────────────
+# Journaux de sessions sur la voiture : bruts, volumineux, propres à chaque session.
+captures/*
+!captures/README.md
+# APK livrés : à publier comme Releases GitHub, pas dans l'historique git.
+dist/
+*.apk
+*.aab
+logs/
+
+# ── Clé de signature : locale, JAMAIS publiée ────────────────────────────────
+# (copie de ~/.android/debug.keystore ; voir docs/app/developpement.md)
+android/keystore/
+*.keystore
+*.jks
+
+# ── Sons « meme » : droits inconnus / sons de marques, non redistribuables ────
+# (à télécharger soi-même : android/app/src/main/assets/memes/engine/README.md)
+android/app/src/main/assets/memes/engine/*.mp3
+
+# ── Android / Gradle ──────────────────────────────────────────────────────────
+android/.gradle/
+android/.kotlin/
+android/build/
+android/app/build/
+android/local.properties
+android/captures/
+.idea/
+*.iml
+.cxx/
+.externalNativeBuild/
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+.venv/
+.env
+
+# ── Éditeurs / OS ─────────────────────────────────────────────────────────────
+.vscode/
+.DS_Store
+*.swp
+
+# ── Claude Code : réglages locaux de la machine ───────────────────────────────
+.claude/settings.local.json

@@ -1,0 +1,605 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>C2 Dashboard</title>
+<style>
+  :root {
+    --bg: #0a0e14; --panel: #131a23; --panel2: #0e131b;
+    --accent: #4dd0e1; --warn: #ffb74d; --err: #ef5350;
+    --ok: #66bb6a; --text: #e0e6ed; --dim: #6b7785; --border: #1e2832;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--text); min-height: 100%;
+    font-family: -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
+    user-select: none; -webkit-user-select: none; }
+  body { padding: 12px; }
+
+  /* Layout grille principale */
+  .grid {
+    display: grid; gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  }
+  .section { background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px 14px; }
+  .section h2 { font-size: 12px; color: var(--accent); text-transform: uppercase;
+    letter-spacing: 0.1em; margin-bottom: 10px; padding-bottom: 6px;
+    border-bottom: 1px solid var(--border); }
+
+  /* Vitesse / RPM en grand */
+  .hero { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+  .hero .section { padding: 18px 20px; }
+  .hero .big { font-size: 56px; font-variant-numeric: tabular-nums;
+    font-weight: 700; line-height: 1; }
+  .hero .label { font-size: 11px; color: var(--dim); text-transform: uppercase;
+    letter-spacing: 0.08em; margin-bottom: 6px; }
+  .hero .unit { font-size: 14px; color: var(--dim); margin-left: 6px; }
+
+  /* Lignes de KV dans les sections */
+  .kv { display: flex; justify-content: space-between; align-items: center;
+    padding: 4px 0; font-size: 14px; }
+  .kv .k { color: var(--dim); }
+  .kv .v { font-variant-numeric: tabular-nums; font-weight: 500; }
+  .kv .v .unit { color: var(--dim); margin-left: 4px; font-weight: 400; }
+
+  /* Pastilles */
+  .pills { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pill { padding: 5px 10px; background: var(--panel2); border: 1px solid var(--border);
+    border-radius: 16px; font-size: 12px; color: var(--dim);
+    transition: all .12s ease; white-space: nowrap; }
+  .pill.on  { background: var(--accent); color: #002b30; border-color: var(--accent); font-weight: 600; }
+  .pill.warn { background: var(--warn);  color: #3e2200; border-color: var(--warn); font-weight: 600; }
+  .pill.err  { background: var(--err);   color: #fff; border-color: var(--err); font-weight: 600; }
+  .pill.ok   { background: var(--ok);    color: #07260e; border-color: var(--ok); font-weight: 600; }
+
+  /* Boutons */
+  .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 6px; margin-top: 10px; }
+  button { background: #1e2832; color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px; font-size: 13px; cursor: pointer;
+    font-family: inherit; transition: background .1s; }
+  button:hover { background: #29384a; }
+  button:active { background: var(--accent); color: #002b30; }
+  .btn-strong { background: var(--accent); color: #002b30; font-weight: 600;
+    border-color: var(--accent); }
+  .btn-strong:hover { background: #80deea; }
+
+  /* EMF section spéciale : grand, prominent */
+  .section.emf { grid-column: 1 / -1; background: linear-gradient(180deg, #131a23 0%, #0e131b 100%); }
+  .section.emf.active { border-color: var(--ok); box-shadow: 0 0 0 2px rgba(102,187,106,0.3); }
+  .section.emf h2 .badge { float: right; font-size: 11px;
+    padding: 3px 10px; border-radius: 12px; letter-spacing: 0; }
+  .section.emf h2 .badge.on  { background: var(--ok); color: #07260e; font-weight: 700; }
+  .section.emf h2 .badge.off { background: var(--dim); color: var(--bg); }
+  .emf-toggle { width: 100%; padding: 14px; font-size: 16px; font-weight: 700;
+    margin-bottom: 12px; }
+  .emf-toggle.on  { background: var(--err); color: #fff; border-color: var(--err); }
+  .emf-toggle.off { background: var(--ok);  color: #07260e; border-color: var(--ok); }
+  .emf-grid { display: grid;
+    grid-template-areas:
+      ".    menu  .    .   "
+      "esc  up    ok   mode"
+      "left .     right phone"
+      ".    down  .    trip"
+      "aircon dark .    .  "
+    ;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    grid-auto-rows: 60px;
+    gap: 8px; max-width: 600px; margin: 0 auto;
+  }
+  .emf-grid button {
+    font-size: 14px; font-weight: 600; padding: 10px 4px;
+    border-radius: 12px;
+  }
+  .emf-grid button.nav { background: #1e2832; }
+  .emf-grid button.nav:hover { background: #4dd0e1; color: #002b30; }
+  .emf-grid button.action { background: #2a4858; }
+  .emf-grid button.action:hover { background: #5cb6d1; color: #002b30; }
+  .emf-grid button.special { background: #3e2638; }
+  .emf-grid button.special:hover { background: #b65a9a; color: #fff; }
+  .emf-grid button.menu-btn { background: var(--accent); color: #002b30; font-weight: 700; }
+  .emf-grid button.ok-btn  { background: var(--ok); color: #07260e; font-weight: 700; }
+  .emf-grid button.esc-btn { background: var(--err); color: #fff; }
+  /* areas */
+  .ga-menu  { grid-area: menu; }
+  .ga-up    { grid-area: up; }
+  .ga-down  { grid-area: down; }
+  .ga-left  { grid-area: left; }
+  .ga-right { grid-area: right; }
+  .ga-ok    { grid-area: ok; }
+  .ga-esc   { grid-area: esc; }
+  .ga-mode  { grid-area: mode; }
+  .ga-trip  { grid-area: trip; }
+  .ga-phone { grid-area: phone; }
+  .ga-aircon{ grid-area: aircon; }
+  .ga-dark  { grid-area: dark; }
+  .emf-info { font-size: 12px; color: var(--dim); margin-top: 12px;
+    padding: 10px; background: var(--panel2); border-radius: 8px; }
+  .emf-info kbd { background: #2a3440; padding: 2px 6px; border-radius: 4px;
+    border: 1px solid var(--border); font-family: ui-monospace, monospace;
+    font-size: 11px; color: var(--text); }
+  .emf-last { text-align: center; font-size: 14px; padding: 8px;
+    background: var(--panel2); border-radius: 8px; margin-top: 10px;
+    color: var(--accent); font-weight: 600; min-height: 36px; }
+
+  #status { position: fixed; bottom: 8px; right: 12px; font-size: 11px;
+    color: var(--dim); z-index: 100; padding: 4px 10px;
+    background: var(--panel); border-radius: 12px; border: 1px solid var(--border); }
+  #status.connected { color: var(--ok); }
+  #status.disconnected { color: var(--err); }
+
+  .nodata { color: var(--dim); font-style: italic; }
+  .gear { font-size: 32px; font-weight: 700; text-align: center; padding: 4px; }
+</style>
+</head>
+<body>
+
+<!-- HERO : vitesse + RPM -->
+<div class="hero">
+  <div class="section">
+    <div class="label">Vitesse</div>
+    <div><span class="big" id="v-speed">—</span><span class="unit">km/h</span></div>
+  </div>
+  <div class="section">
+    <div class="label">Régime</div>
+    <div><span class="big" id="v-rpm">—</span><span class="unit">tr/min</span></div>
+  </div>
+</div>
+
+<div class="grid">
+
+  <!-- BSI / état véhicule -->
+  <div class="section">
+    <h2>🔑 BSI / Contact</h2>
+    <div class="kv"><span class="k">Position clé</span><span class="v" id="v-key">—</span></div>
+    <div class="kv"><span class="k">Mode allumage</span><span class="v" id="v-ig-mode">—</span></div>
+    <div class="kv"><span class="k">Mode économique</span><span class="v" id="v-eco">—</span></div>
+    <div class="kv"><span class="k">Mode nuit</span><span class="v" id="v-night">—</span></div>
+    <div class="kv"><span class="k">Luminosité TdB</span><span class="v" id="v-bright">—</span></div>
+    <div class="kv"><span class="k">Black panel</span><span class="v" id="v-black">—</span></div>
+    <div class="kv"><span class="k">Heure BSI</span><span class="v" id="v-bsi-time">—</span></div>
+  </div>
+
+  <!-- Moteur -->
+  <div class="section">
+    <h2>🛠 Moteur</h2>
+    <div class="kv"><span class="k">T° liquide refroid.</span><span class="v"><span id="v-tcool">—</span><span class="unit">°C</span></span></div>
+    <div class="kv"><span class="k">T° huile</span><span class="v"><span id="v-toil">—</span><span class="unit">°C</span></span></div>
+    <div class="kv"><span class="k">T° extérieure</span><span class="v"><span id="v-text">—</span><span class="unit">°C</span></span></div>
+    <div class="kv"><span class="k">Marche arrière</span><span class="v" id="v-reverse">—</span></div>
+    <div class="kv"><span class="k">Boîte (gear)</span><span class="v gear" id="v-gear">—</span></div>
+  </div>
+
+  <!-- Carburant / autonomie -->
+  <div class="section">
+    <h2>⛽ Carburant / Huile</h2>
+    <div class="kv"><span class="k">Niveau carburant</span><span class="v"><span id="v-fuel-pct">—</span><span class="unit">%</span></span></div>
+    <div class="kv"><span class="k">↳ Estimation</span><span class="v"><span id="v-fuel-l">—</span><span class="unit">L / 40 L</span></span></div>
+    <div class="kv"><span class="k">Conso instantanée</span><span class="v"><span id="v-cons">—</span><span class="unit">l/100</span></span></div>
+    <div class="kv"><span class="k">Autonomie</span><span class="v"><span id="v-range">—</span><span class="unit">km</span></span></div>
+    <div class="kv"><span class="k">Niveau huile</span><span class="v"><span id="v-oil-pct">—</span><span class="unit">%</span></span></div>
+    <div class="kv"><span class="k">↳ Estimation</span><span class="v"><span id="v-oil-l">—</span><span class="unit">L / 3.0 L</span></span></div>
+  </div>
+
+  <!-- Distance / trip -->
+  <div class="section">
+    <h2>📏 Distance / Trip</h2>
+    <div class="kv"><span class="k">Odomètre total</span><span class="v"><span id="v-odo">—</span><span class="unit">km</span></span></div>
+    <div class="kv"><span class="k">Trip distance</span><span class="v"><span id="v-trip-dist">—</span><span class="unit">km</span></span></div>
+    <div class="kv"><span class="k">Trip vit. moyenne</span><span class="v"><span id="v-trip-vm">—</span><span class="unit">km/h</span></span></div>
+    <div class="kv"><span class="k">Trip conso moy.</span><span class="v"><span id="v-trip-cons">—</span><span class="unit">l/100</span></span></div>
+    <div class="kv"><span class="k">Page EMF</span><span class="v" id="v-emf-page">—</span></div>
+  </div>
+
+  <!-- Maintenance -->
+  <div class="section">
+    <h2>🔧 Maintenance</h2>
+    <div class="kv"><span class="k">Entretien dû</span><span class="v" id="v-maint-due">—</span></div>
+    <div class="kv"><span class="k">Km avant entretien</span><span class="v"><span id="v-maint-km">—</span><span class="unit">km</span></span></div>
+    <div class="kv"><span class="k">Jours avant entretien</span><span class="v"><span id="v-maint-d">—</span><span class="unit">j</span></span></div>
+  </div>
+
+  <!-- Volant -->
+  <div class="section">
+    <h2>🎛 Commandes volant</h2>
+    <div class="kv"><span class="k">Bouton actif</span><span class="v" id="v-wheel-btn" style="color:var(--accent);font-weight:700">—</span></div>
+    <div class="kv"><span class="k">Raw byte[0]</span><span class="v" id="v-wheel-raw">—</span></div>
+    <div class="kv"><span class="k">Scroll position</span><span class="v" id="v-wheel-scroll">—</span></div>
+    <div class="kv"><span class="k">Scroll Δ</span><span class="v" id="v-wheel-delta">—</span></div>
+    <div class="actions">
+      <button onclick="sendBtn('vol+')">VOL+</button>
+      <button onclick="sendBtn('vol-')">VOL-</button>
+      <button onclick="sendBtn('source')">SRC</button>
+      <button onclick="sendBtn('mute')">MUTE</button>
+      <button onclick="sendBtn('suivant')">▶▶</button>
+      <button onclick="sendBtn('precedant')">◀◀</button>
+    </div>
+  </div>
+
+  <!-- Feux / clignos -->
+  <div class="section">
+    <h2>💡 Feux</h2>
+    <div class="pills" id="lights-pills"></div>
+  </div>
+
+  <!-- Portes / ouvertures -->
+  <div class="section">
+    <h2>🚪 Ouvertures</h2>
+    <div class="pills" id="doors-pills"></div>
+  </div>
+
+  <!-- Témoins / Alertes (combiné) -->
+  <div class="section">
+    <h2>⚠ Témoins / Alertes</h2>
+    <div class="pills" id="warn-pills"></div>
+  </div>
+
+  <!-- État dynamique général -->
+  <div class="section">
+    <h2>🚗 États dynamiques</h2>
+    <div class="kv"><span class="k">Frein à main</span><span class="v" id="v-handbrake">—</span></div>
+    <div class="kv"><span class="k">Témoin warnings</span><span class="v" id="v-warnings">—</span></div>
+    <div class="kv"><span class="k">Réserve carburant</span><span class="v" id="v-fuel-low">—</span></div>
+    <div class="kv"><span class="k">ABS actif</span><span class="v" id="v-abs">—</span></div>
+    <div class="kv"><span class="k">ESP en cours</span><span class="v" id="v-esp">—</span></div>
+    <div class="kv"><span class="k">ESP désactivé</span><span class="v" id="v-esp-off">—</span></div>
+    <div class="kv"><span class="k">Essuie-glace</span><span class="v" id="v-wiper">—</span></div>
+  </div>
+
+  <!-- ━━━ ÉCRAN MULTIFONCTION ━━━ -->
+  <div class="section emf" id="emf-section">
+    <h2>🖥 Contrôle écran multifonction (EMF)
+      <span class="badge off" id="emf-badge">OFF</span>
+    </h2>
+    <button class="emf-toggle off" id="emf-toggle" onclick="toggleEMF()">
+      ▶  Activer le mode EMF
+    </button>
+    <div class="emf-grid" id="emf-grid">
+      <button class="menu-btn ga-menu"  onclick="emfBtn('MENU')">☰ MENU</button>
+      <button class="esc-btn  ga-esc"   onclick="emfBtn('ESC')">✗ ESC</button>
+      <button class="nav      ga-up"    onclick="emfBtn('UP')">▲</button>
+      <button class="ok-btn   ga-ok"    onclick="emfBtn('OK')">✓ OK</button>
+      <button class="action   ga-mode"  onclick="emfBtn('MODE')">⇋ MODE</button>
+      <button class="nav      ga-left"  onclick="emfBtn('LEFT')">◀</button>
+      <button class="nav      ga-right" onclick="emfBtn('RIGHT')">▶</button>
+      <button class="action   ga-phone" onclick="emfBtn('PHONE')">☎ PHONE</button>
+      <button class="nav      ga-down"  onclick="emfBtn('DOWN')">▼</button>
+      <button class="action   ga-trip"  onclick="emfBtn('TRIP')">⊙ TRIP</button>
+      <button class="special  ga-aircon" onclick="emfBtn('AIRCON')">❄ AIRCON</button>
+      <button class="special  ga-dark"  onclick="emfBtn('DARK')">☾ DARK</button>
+    </div>
+    <div class="emf-last" id="emf-last">— en attente —</div>
+    <div class="emf-info">
+      💡 Quand activé, ce mode émet en continu <code>0x3E5 = 00 00 00 00 00 00</code>
+      à 15 Hz (release/idle), puis injecte 1 trame avec le bit du bouton à chaque clic.
+      L'écran central détecte le edge 0→1 et traite l'action.<br>
+      <br>
+      <strong>Raccourcis clavier (quand mode actif):</strong>
+      <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> nav ·
+      <kbd>Enter</kbd> OK · <kbd>Esc</kbd> ESC ·
+      <kbd>m</kbd> MENU · <kbd>t</kbd> TRIP · <kbd>M</kbd> MODE
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="section">
+    <h2>⚡ Actions</h2>
+    <div class="actions">
+      <button class="btn-strong" onclick="setClock()">⏰ Régler heure (now)</button>
+      <button onclick="window.open('/api/state','_blank')">📋 État JSON</button>
+      <button onclick="window.open('/api/raw','_blank')">📋 Raw IDs</button>
+    </div>
+    <div style="margin-top:10px;font-size:11px;color:var(--dim)">
+      Frames vues: <span id="v-frames">0</span> ·
+      Last update: <span id="v-last-ts">—</span>
+    </div>
+  </div>
+
+</div>
+
+<div id="status" class="disconnected">○ déconnecté</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+function fmt(v, dec=0, dash="—") {
+  if (v == null || v === undefined) return dash;
+  if (typeof v === "number") return dec ? v.toFixed(dec) : Math.round(v);
+  return String(v);
+}
+function fmtBool(v, on="OUI", off="non", dash="—") {
+  if (v == null) return dash;
+  return v ? on : off;
+}
+
+function setBoolClass(elemId, value, klass="warn") {
+  const el = $(elemId); if (!el) return;
+  el.classList.remove("on","warn","err","ok");
+  el.style.color = "";
+  if (value === true) {
+    el.classList.add(klass);
+  }
+  el.textContent = fmtBool(value);
+  // colorize text
+  if (value === true) {
+    if (klass === "err")  el.style.color = "var(--err)";
+    else if (klass === "warn") el.style.color = "var(--warn)";
+    else if (klass === "ok") el.style.color = "var(--ok)";
+    else el.style.color = "var(--accent)";
+  }
+}
+
+function renderPills(containerId, mapping, source) {
+  const c = $(containerId);
+  if (!c) return;
+  c.innerHTML = "";
+  if (!source) {
+    c.innerHTML = '<span class="nodata">— pas de données —</span>';
+    return;
+  }
+  for (const [key, label, klass] of mapping) {
+    const v = source[key];
+    const span = document.createElement("span");
+    span.className = "pill";
+    if (v === true) span.classList.add(klass || "on");
+    span.textContent = label;
+    c.appendChild(span);
+  }
+}
+
+function render(s) {
+  // Hero
+  $("v-speed").textContent = fmt(s.speed, 0);
+  $("v-rpm").textContent   = fmt(s.rpm, 0);
+
+  // BSI
+  $("v-key").textContent     = fmt(s.key_position);
+  $("v-ig-mode").textContent = fmt(s.ignition_mode);
+  $("v-eco").textContent     = fmtBool(s.economy_mode);
+  $("v-night").textContent   = fmtBool(s.night_mode);
+  $("v-bright").textContent  = s.dashboard_brightness != null
+                                ? `${s.dashboard_brightness}/15` : "—";
+  $("v-black").textContent   = fmtBool(s.black_panel);
+  $("v-bsi-time").textContent = s.datetime_bsi || "—";
+
+  // Moteur
+  $("v-tcool").textContent = fmt(s.t_coolant);
+  $("v-toil").textContent  = fmt(s.t_oil);
+  $("v-text").textContent  = fmt(s.t_ext);
+  $("v-reverse").textContent = fmtBool(s.reverse_gear);
+  $("v-gear").textContent  = s.gear_cmb && s.gear_cmb !== "?" ? s.gear_cmb : "—";
+
+  // Carburant / huile
+  $("v-fuel-pct").textContent = fmt(s.fuel_pct ?? s.fuel_raw);
+  $("v-fuel-l").textContent   = fmt(s.fuel_liters_est, 1);
+  $("v-cons").textContent     = fmt(s.fuel_inst, 1);
+  $("v-range").textContent    = fmt(s.range_km);
+  $("v-oil-pct").textContent  = fmt(s.oil_level_pct ?? s.oil_level_raw);
+  $("v-oil-l").textContent    = fmt(s.oil_level_liters_est, 2);
+
+  // Distance
+  $("v-odo").textContent       = s.odo != null ? s.odo.toLocaleString("fr-FR") : "—";
+  $("v-trip-dist").textContent = fmt(s.trip_dist, 1);
+  $("v-trip-vm").textContent   = fmt(s.trip_avg_speed);
+  $("v-trip-cons").textContent = fmt(s.trip_avg_cons, 1);
+  $("v-emf-page").textContent  = fmt(s.emf_page);
+
+  // Maintenance
+  $("v-maint-due").textContent = fmtBool(s.maint_due);
+  $("v-maint-km").textContent  = fmt(s.maint_km_remaining);
+  $("v-maint-d").textContent   = fmt(s.maint_days_remaining);
+
+  // Volant
+  $("v-wheel-btn").textContent = s.wheel_btn || "—";
+  const raw = s.wheel_btn_raw == null ? 0 : s.wheel_btn_raw;
+  $("v-wheel-raw").textContent = `0x${raw.toString(16).toUpperCase().padStart(2,"0")}`;
+  $("v-wheel-scroll").textContent = fmt(s.wheel_scroll);
+  $("v-wheel-delta").textContent  = (s.wheel_scroll_delta || 0) > 0
+    ? `+${s.wheel_scroll_delta}`
+    : (s.wheel_scroll_delta || 0).toString();
+
+  // Feux (pills)
+  renderPills("lights-pills", [
+    ["feux_position",     "POSITION",    "on"],
+    ["feux_croisement",   "CROISEMENT",  "on"],
+    ["feux_route",        "ROUTE",       "on"],
+    ["antibrouillard_av", "ANTIBR. AV",  "on"],
+    ["antibrouillard_ar", "ANTIBR. AR",  "on"],
+    ["cligno_g",          "◀ CLIGNO G",  "warn"],
+    ["cligno_d",          "CLIGNO D ▶",  "warn"],
+    ["drl",               "DRL",          "on"],
+  ], s.lights);
+
+  // Portes (pills)
+  renderPills("doors-pills", [
+    ["AVG",         "PORTE AVG",      "err"],
+    ["AVD",         "PORTE AVD",      "err"],
+    ["coffre",      "COFFRE",         "err"],
+    ["capot",       "CAPOT",          "err"],
+    ["vitre_ar",    "VITRE AR",       "err"],
+    ["trappe_carb", "TRAPPE CARB.",   "warn"],
+  ], s.doors);
+
+  // Témoins (pills)
+  renderPills("warn-pills", [
+    ["fuel_low",            "RÉSERVE CARB.",   "warn"],
+    ["driver_belt",          "CEINTURE COND.",  "err"],
+    ["passenger_belt",       "CEINTURE PASS.",  "err"],
+    ["passenger_airbag_off", "AIRBAG PASS. OFF","warn"],
+    ["abs_active",           "ABS ACTIF",       "on"],
+    ["esp_in_progress",      "ESP EN COURS",    "on"],
+    ["esp_inactivated",      "ESP DÉSACTIVÉ",   "warn"],
+    ["service_exclamation",  "! SERVICE",        "err"],
+    ["oil_pressure_alert",   "PRESSION HUILE",  "err"],
+    ["oil_level_alert",      "NIVEAU HUILE",    "err"],
+    ["coolant_level_alert",  "LIQ. REFROID.",   "err"],
+    ["coolant_temp_max",     "T° MOTEUR MAX",   "err"],
+    ["oil_temp_max",         "T° HUILE MAX",    "err"],
+    ["brake_fluid_alert",    "LIQ. FREIN",      "err"],
+    ["tyre_pressure_low",    "PNEU PRESSION",   "warn"],
+    ["fap_clogged",          "FAP COLMATÉ",     "warn"],
+    ["max_rpm_1",            "ZONE ROUGE",       "warn"],
+    ["warning_active",        "WARNINGS ACTIFS","warn"],
+  ], s.warn);
+
+  // États dynamiques (textuels)
+  $("v-handbrake").textContent = fmtBool(s.handbrake, "LEVÉ", "baissé");
+  setBoolClass("v-handbrake", s.handbrake, "warn");
+  $("v-warnings").textContent  = fmtBool(s.warnings_on);
+  setBoolClass("v-warnings", s.warnings_on, "warn");
+  $("v-fuel-low").textContent  = fmtBool(s.fuel_low_warning);
+  setBoolClass("v-fuel-low", s.fuel_low_warning, "warn");
+  if (s.warn) {
+    $("v-abs").textContent = fmtBool(s.warn.abs_active);
+    setBoolClass("v-abs", s.warn.abs_active, "ok");
+    $("v-esp").textContent = fmtBool(s.warn.esp_in_progress);
+    setBoolClass("v-esp", s.warn.esp_in_progress, "on");
+    $("v-esp-off").textContent = fmtBool(s.warn.esp_inactivated);
+    setBoolClass("v-esp-off", s.warn.esp_inactivated, "warn");
+  }
+  $("v-wiper").textContent = fmtBool(s.wiper_active);
+
+  // Footer meta
+  $("v-frames").textContent = s._frames_seen || 0;
+  if (s._last_update_ts) {
+    const d = new Date(s._last_update_ts * 1000);
+    $("v-last-ts").textContent = d.toLocaleTimeString("fr-FR");
+  }
+}
+
+let ws;
+function connectWS() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onopen = () => {
+    $("status").className = "connected";
+    $("status").textContent = "● connecté";
+  };
+  ws.onmessage = e => {
+    try {
+      const m = JSON.parse(e.data);
+      if (m.type === "state") render(m.state);
+    } catch (err) { console.error(err); }
+  };
+  ws.onclose = () => {
+    $("status").className = "disconnected";
+    $("status").textContent = "○ déconnecté";
+    setTimeout(connectWS, 1500);
+  };
+  ws.onerror = () => ws.close();
+}
+connectWS();
+
+async function setClock() {
+  const r = await fetch("/api/clock", { method: "POST",
+    headers: {"Content-Type": "application/json"}, body: "{}" });
+  const j = await r.json();
+  flash(j.ok ? "⏰ heure envoyée à la BSI" : "❌ " + (j.error || "échec"));
+}
+
+async function sendBtn(name) {
+  const r = await fetch("/api/button", { method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({button: name}) });
+  const j = await r.json();
+  flash(j.ok ? "➜ " + name : "❌ " + (j.error || "échec"));
+}
+
+function flash(text) {
+  const old = $("status").textContent;
+  $("status").textContent = text;
+  setTimeout(() => { $("status").textContent = old; }, 1500);
+}
+
+// ━━━ EMF CONTROL ━━━
+let emfActive = false;
+
+async function refreshEMFStatus() {
+  try {
+    const r = await fetch("/api/emf");
+    const j = await r.json();
+    setEMFActiveUI(j.active);
+  } catch (e) { /* noop */ }
+}
+
+function setEMFActiveUI(active) {
+  emfActive = active;
+  const sec   = $("emf-section");
+  const badge = $("emf-badge");
+  const tg    = $("emf-toggle");
+  if (active) {
+    sec.classList.add("active");
+    badge.className = "badge on";
+    badge.textContent = "● ACTIF";
+    tg.className = "emf-toggle on";
+    tg.textContent = "⏹ Désactiver le mode EMF";
+  } else {
+    sec.classList.remove("active");
+    badge.className = "badge off";
+    badge.textContent = "OFF";
+    tg.className = "emf-toggle off";
+    tg.textContent = "▶ Activer le mode EMF";
+  }
+}
+
+async function toggleEMF() {
+  try {
+    const r = await fetch("/api/emf/toggle", { method: "POST",
+      headers: {"Content-Type":"application/json"}, body: "{}" });
+    const j = await r.json();
+    if (j.error) { flash("❌ " + j.error); return; }
+    setEMFActiveUI(j.active);
+    flash(j.active ? "🟢 EMF activé" : "🔴 EMF désactivé");
+  } catch (e) { flash("❌ " + e.message); }
+}
+
+async function emfBtn(name) {
+  if (!emfActive) {
+    flash("⚠️ Active d'abord le mode EMF");
+    return;
+  }
+  try {
+    const r = await fetch("/api/emf/button", { method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({button: name}) });
+    const j = await r.json();
+    if (j.error) { flash("❌ " + j.error); return; }
+    $("emf-last").textContent = "▶ " + name + "  (" + j.data + ")";
+  } catch (e) { flash("❌ " + e.message); }
+}
+
+// Bindings clavier (actifs uniquement quand mode EMF activé)
+document.addEventListener("keydown", e => {
+  if (!emfActive) return;
+  // Ne pas intercepter si on est dans un input/textarea
+  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+
+  const map = {
+    "ArrowUp":    "UP",
+    "ArrowDown":  "DOWN",
+    "ArrowLeft":  "LEFT",
+    "ArrowRight": "RIGHT",
+    "Enter":       "OK",
+    "Escape":      "ESC",
+    "m": "MENU", "M": "MODE",   // m minuscule = MENU, M majuscule = MODE
+    "t": "TRIP", "T": "TRIP",
+    "p": "PHONE","P": "PHONE",
+    "x": "AIRCON","X":"AIRCON",
+    "n": "DARK", "N": "DARK",
+    "o": "OK",   "O": "OK",
+    "e": "ESC",
+  };
+  const action = map[e.key];
+  if (action) {
+    e.preventDefault();
+    emfBtn(action);
+  }
+});
+
+// Au chargement, vérifier si le mode EMF est déjà actif
+refreshEMFStatus();
+setInterval(refreshEMFStatus, 5000);
+</script>
+</body>
+</html>

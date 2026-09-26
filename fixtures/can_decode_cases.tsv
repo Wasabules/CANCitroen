@@ -1,0 +1,56 @@
+# Trames de référence CAN-Confort (Citroën C2) — partagées par :
+#   android/app/src/test/.../CanDecoderParityTest.kt   (CanDecoder.kt)
+#   scripts/test_decoders.py                            (bridge.py)
+# Les deux décodeurs doivent donner la même valeur attendue.
+#
+# Colonnes (tabulations) : id  données  champ_kotlin  clé_python  attendu  source
+#   - champ imbriqué : "lights.feuxRoute" / "lights.feux_route"
+#   - "-" dans une colonne de champ = pas vérifié pour ce langage
+#   - attendu : nombre, true/false, null, ou texte (nom d'enum)
+# Les valeurs attendues viennent de relevés (Lexia, field test) ou des structures
+# PSAVanCanBridge — pas de la sortie du code : ajouter ici tout nouveau point
+# de calibration vérifié sur la voiture.
+#
+# id	données	kotlin	python	attendu	source
+0B6	1A 40 22 C4 00 00 00 00	rpm	rpm	840.0	RPM = BE16 / 8 (PSAVanCanBridge CAN_0B6_2004)
+0B6	1A 40 22 C4 00 00 00 00	speed	speed	89.0	vitesse = BE16 / 100
+0B6	1A 45 22 C5 00 00 00 00	rpm	rpm	840.6	6725/8 = 840,625 → arrondi 0,1 au plus proche
+0B6	1A 45 22 C5 00 00 00 00	speed	speed	89.0	8901/100 = 89,01 → 89,0
+0F6	08 91 10 DC AD 00 7D 00	tCoolant	t_coolant	92	Lexia : 92 °C ↔ 0x91
+0F6	08 91 10 DC AD 00 7D 00	tExt	t_ext	23	Lexia : 23 °C ↔ 0x7D
+0F6	08 91 10 DC AD 00 7D 00	odo	odo	110506.9	BE24 / 10 (facteur à revérifier au compteur)
+0F6	08 91 10 DC AD 00 7D 00	contact	contact	true	byte0 bits 3-4 = 1 → contact mis
+0F6	08 91 10 DC AD 00 7D 00	keyPosition	key_position	CONTACT	byte0 bits 3-4
+0F6	00 FF FF FF FF 00 FF 00	tCoolant	t_coolant	null	sentinelle 0xFF (BSI pas encore synchronisée)
+0F6	00 FF FF FF FF 00 FF 00	odo	odo	null	sentinelle 0xFFFFFF (sinon 1 677 721 km)
+0F6	00 FF FF FF FF 00 FF 00	tExt	t_ext	null	sentinelle 0xFF
+0F6	00 FF FF FF FF 00 FF 00	contact	contact	false	clé sur STOP
+161	00 00 86 32 00 00 1E	tOil	t_oil	70	Lexia : 71 °C ↔ 0x86 (134 − 64 = 70)
+161	00 00 86 32 00 00 1E	fuelPct	fuel_pct	50	byte3 = % direct (retour utilisateur 2026-05-09)
+161	00 00 86 32 00 00 1E	fuelLitersEst	fuel_liters_est	20.5	50 % × 41 L
+161	00 00 86 32 00 00 1E	oilLevelPct	oil_level_pct	30	byte6 = % direct
+161	00 00 86 32 00 00 1E	oilLevelLitersEst	oil_level_liters_est	0.9	30 % × 3,0 L = 0,8999… → arrondi (et non tronqué)
+161	00 00 FF 32 00 00 1E	tOil	t_oil	null	sentinelle 0xFF (sinon 191 °C en base)
+161	00 00 00 32 00 00 1E	tOil	t_oil	null	0x00 = pas encore lu
+221	00 FF FF 01 B8 FF FF	rangeKm	range_km	440	field test 2026-04-26 : autonomie 440 km
+221	00 FF FF 01 B8 FF FF	fuelInst	fuel_inst	null	0xFFFF = conso non calculée
+221	00 00 4B 01 B8 FF FF	fuelInst	fuel_inst	7.5	BE16 / 10 l/100
+261	27 27 0F 00 4C 3C 4C	tripAvgSpeed	trip_avg_speed	39	field test : trame 27 27 0F 00 4C 3C 4C
+261	27 27 0F 00 4C 3C 4C	tripDist	trip_dist	384.0	BE16(bytes 2-3) / 10
+261	27 27 0F 00 4C 3C 4C	tripAvgCons	trip_avg_cons	7.6	byte4 / 10 l/100
+128	20 00 00 00 A2 00 00 00	handbrake	handbrake	true	field test : frein à main = byte0 bit 5
+128	20 00 00 00 A2 00 00 00	lights.feuxRoute	lights.feux_route	true	field test : byte4 bit 5 = route
+128	20 00 00 00 A2 00 00 00	lights.feuxPosition	lights.feux_position	true	field test : byte4 bit 7 = position
+128	20 00 00 00 A2 00 00 00	lights.clignoG	lights.cligno_g	true	field test : byte4 bit 1 = clignotant
+128	20 00 00 00 A2 00 00 00	lights.feuxCroisement	lights.feux_croisement	false	byte4 bit 6 à 0
+220	88 00	doors.avg	doors.AVG	true	field test : byte0 bit 7 = porte conducteur
+220	88 00	doors.coffre	doors.coffre	true	field test : byte0 bit 3 = coffre
+220	88 00	doors.avd	doors.AVD	false	byte0 bit 6 à 0
+21F	08 00 00	wheelButtonRaw	wheel_btn_raw	8	field test : bit 3 = VOL+ sur cette C2
+21F	08 00 00	wheelButton	-	VOL+	libellé côté app
+21F	04 00 00	wheelButton	-	VOL-	field test : bit 2 = VOL−
+21F	00 00 00	wheelButton	-	null	aucun bouton
+036	00 00 80 25 01	economyMode	economy_mode	true	byte2 bit 7 (PSAVanCanBridge CAN_036_2004)
+036	00 00 80 25 01	dashboardBrightness	dashboard_brightness	5	byte3 bits 0-3
+036	00 00 80 25 01	nightMode	night_mode	true	byte3 bit 5
+036	00 00 80 25 01	ignitionMode	ignition_mode	NORMAL	byte4 bits 0-2 = 1

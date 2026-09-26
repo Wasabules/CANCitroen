@@ -1,0 +1,12 @@
+# Fins de ligne normalisées (LF), sauf scripts Windows.
+* text=auto eol=lf
+*.bat text eol=crlf
+
+# Binaires : jamais de diff ni de conversion.
+*.png binary
+*.jpg binary
+*.wav binary
+*.mp3 binary
+*.jar binary
+*.keystore binary
+*.apk binary

@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
+    <application
+        android:name=".App"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.CANCitroen"
+        tools:targetApi="34">
+
+        <!--
+             Attributs "launcher-grade" :
+              - stateNotNeeded : l'activity peut être relancée sans restore (un
+                home doit survivre aux kills mémoire propres).
+              - excludeFromRecents : un home n'apparaît pas dans la liste recents.
+              - taskAffinity="" : racine de tâche dédiée — évite que l'app soit
+                ré-attachée à une autre task quand le ROM Atoto envoie son intent
+                HOME au réveil.
+              - clearTaskOnLaunch : appui HOME → retour propre à la racine.
+        -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout"
+            android:screenOrientation="landscape"
+            android:stateNotNeeded="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:clearTaskOnLaunch="true"
+            android:theme="@style/Theme.CANCitroen">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Activé pour permettre à l'utilisateur de définir CANCitroen comme
+                 launcher Atoto par défaut. Pas de comportement intrusif tant que
+                 l'utilisateur ne le sélectionne pas explicitement. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!--
+             Auto-launch USB isolé sur un activity-alias : le hot-plug CANable
+             passe par ce composant, qui forward vers MainActivity via
+             targetActivity. Comme ça, le composant qui répond à category.HOME
+             n'a jamais à gérer USB_DEVICE_ATTACHED et le ROM Atoto ne voit pas
+             notre HOME activity « bouger » sur les events USB.
+        -->
+        <activity-alias
+            android:name=".UsbAttachActivity"
+            android:targetActivity=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/usb_device_filter" />
+        </activity-alias>
+
+        <service
+            android:name=".CanService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="CAN bus communication via USB CANable v2 — read vehicle telemetry and emit RD4 emulation frames" />
+        </service>
+
+        <!-- NotificationListener stub : permet à l'utilisateur d'activer l'accès
+             notifications dans Réglages Android, ce qui donne à l'app la
+             permission de cibler les sessions média actives (Android Auto). -->
+        <service
+            android:name=".swc.SwcNotificationListenerService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+
+        <!-- Boot receiver pour relancer le service au démarrage -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+</manifest>
