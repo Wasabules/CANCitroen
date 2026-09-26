@@ -9,7 +9,9 @@ Reverse-engineering du bus **CAN-Confort (125 kbit/s)** d'une Citroën C2 (PSA A
 - `scripts/` — outillage Python côté PC (sniff, diff, isolation de boutons, émission) + `bridge.py`, l'implémentation de référence des décodeurs.
 - `android/` — app Kotlin/Compose installée sur l'Atoto : lit le CANable en USB, décode, affiche des dashboards, relaie les boutons volant vers Android, pilote l'écran multifonction (EMF).
 
-Tout (code, commentaires, notes, UI) est en français — garder cette convention. Le dossier n'est pas un dépôt git.
+Tout (code, commentaires, notes, UI) est en français — garder cette convention.
+
+**Dépôt public** : https://github.com/Wasabules/CANCitroen (licence MIT). Commits **au seul nom de Wasabules** (identité noreply configurée dans `.git/config`), **sans trailer `Co-Authored-By` ni mention de Claude**. Ne jamais versionner la keystore (`android/keystore/`), les sons « meme » (`assets/memes/engine/*.mp3`), des APK, des captures de bus ou des données personnelles (VIN, plaque, positions GPS).
 
 ## Commandes
 
