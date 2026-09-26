@@ -21,7 +21,6 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings(),
     )
 
-    fun setEmfAutostart(v: Boolean) = viewModelScope.launch { settings.setEmfAutostart(v) }
     fun setLaunchAsHome(v: Boolean) = viewModelScope.launch { settings.setLaunchAsHome(v) }
     fun setForceHomeRoot(v: Boolean) = viewModelScope.launch { settings.setForceHomeRoot(v) }
     fun setAggressiveDisableLaunchers(v: Boolean) =

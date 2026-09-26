@@ -15,8 +15,8 @@ android {
         applicationId = "com.geoffrey.cancitroen"
         minSdk = 29              // Android 10 (Atoto A6PF tourne >= 10)
         targetSdk = 36
-        versionCode = 25
-        versionName = "0.1.25"
+        versionCode = 26
+        versionName = "0.1.26"
     }
 
     // Clé de signature LOCALE, non versionnée (android/keystore/, voir

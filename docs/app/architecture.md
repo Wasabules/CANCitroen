@@ -138,11 +138,9 @@ sessions média actives.
 
 `EmfController` reproduit PSAWifiDisplayControl : tant que le mode est actif,
 il émet `0x3E5 = 00×6` toutes les 65 ms, et un appui injecte une seule trame
-avec le bit du bouton (relâché au tick suivant). Activé depuis la page EMF de
-l'UI. Prérequis : BSI télécodée « RD4 présent ».
-
-⚠ Le réglage « Activer le mode EMF au démarrage » (`behavior.emfModeAutostart`)
-est enregistré mais **n'est lu nulle part** : il n'a aucun effet pour l'instant.
+avec le bit du bouton (relâché au tick suivant). Activé à la main depuis la
+page EMF de l'UI (pas d'activation automatique : l'app n'émet sur le bus que
+sur demande). Prérequis : BSI télécodée « RD4 présent ».
 
 ## Historique (Room)
 
@@ -200,12 +198,18 @@ Règles de performance (l'app est à l'écran pendant tout le trajet) :
   (1 Hz en mode nuit) ;
 - calculs lourds (Stats) mémorisés (`remember`) ou hors du thread principal.
 
+**Touche HOME** : tout intent HOME (touche HOME, bouton volant mappé sur
+« Accueil », retour forcé par le garde root) ramène à la page d'accueil et
+referme le sélecteur d'apps — animé si l'app était déjà à l'écran, instantané
+si elle revient d'arrière-plan (même règle que Launcher3). Les autres intents
+(branchement USB via `.UsbAttachActivity`) ne changent pas de page.
+
 Mode inactif : après 4 s sans toucher, l'indicateur de pages s'estompe.
 
 ## Réglages (DataStore)
 
 `AppSettings` regroupe : `display` (formats d'affichage), `behavior`
-(démarrage EMF, launcher standard, launcher forcé root, mode agressif), `dev`
+(launcher standard, launcher forcé root, mode agressif), `dev`
 (simulateur), `fuel` (prix, capacité du réservoir), `calibration` (décalage
 T° ext), `engineSound`, `theme` (couleur d'accent), `shortcutOverrides`
 (raccourcis de l'accueil), `swcMapping` (volant).

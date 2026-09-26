@@ -62,7 +62,6 @@ private enum class SettingsTab(val emoji: String, val title: String) {
 fun SettingsScreen(
     settings: AppSettings,
     guardStatus: LauncherGuard.Status?,
-    onEmfAutostartChange: (Boolean) -> Unit,
     onLaunchAsHomeChange: (Boolean) -> Unit,
     onForceHomeRootChange: (Boolean) -> Unit,
     onAggressiveDisableChange: (Boolean) -> Unit,
@@ -153,8 +152,6 @@ fun SettingsScreen(
                 val isHome = remember(permTick) { PermissionsHelper.isDefaultHome(ctx) }
                 val currentHome = remember(permTick) { PermissionsHelper.currentDefaultHomePackage(ctx) }
                 SectionCard("⚙ Comportement") {
-                    SwitchRow("Activer le mode EMF au démarrage",
-                        settings.behavior.emfModeAutostart, onEmfAutostartChange)
                     SwitchRow("Lancer comme launcher Atoto (standard)",
                         settings.behavior.launchAsHome, onLaunchAsHomeChange)
                     if (settings.behavior.launchAsHome) {

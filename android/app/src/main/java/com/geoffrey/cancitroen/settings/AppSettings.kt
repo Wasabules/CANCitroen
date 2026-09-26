@@ -28,7 +28,6 @@ data class DisplaySettings(
 
 /** Comportement service / launcher. */
 data class BehaviorSettings(
-    val emfModeAutostart: Boolean = false,
     /** Déclare l'app comme home + ouvre le picker Android (voie "douce", sans root). */
     val launchAsHome: Boolean = false,
     /**
@@ -108,7 +107,6 @@ class AppSettingsRepository(private val context: Context) {
         val SPEED_GPS = booleanPreferencesKey("speed_show_gps")
         val RANGE_CONS = booleanPreferencesKey("range_show_consumption")
         // BehaviorSettings
-        val EMF_AUTOSTART = booleanPreferencesKey("emf_autostart")
         val LAUNCH_AS_HOME = booleanPreferencesKey("launch_as_home")
         val FORCE_HOME_ROOT = booleanPreferencesKey("force_home_root")
         val AGGRESSIVE_DISABLE_LAUNCHERS = booleanPreferencesKey("aggressive_disable_launchers")
@@ -142,7 +140,6 @@ class AppSettingsRepository(private val context: Context) {
                 rangeShowConsumption = prefs[Keys.RANGE_CONS] ?: false,
             ),
             behavior = BehaviorSettings(
-                emfModeAutostart = prefs[Keys.EMF_AUTOSTART] ?: false,
                 launchAsHome = prefs[Keys.LAUNCH_AS_HOME] ?: false,
                 forceHomeRoot = prefs[Keys.FORCE_HOME_ROOT] ?: false,
                 aggressiveDisableLaunchers = prefs[Keys.AGGRESSIVE_DISABLE_LAUNCHERS] ?: false,
@@ -192,9 +189,6 @@ class AppSettingsRepository(private val context: Context) {
         return SwcMapping(defaultMapping() + parsed)
     }
 
-    suspend fun setEmfAutostart(value: Boolean) {
-        context.dataStore.edit { it[Keys.EMF_AUTOSTART] = value }
-    }
     suspend fun setLaunchAsHome(value: Boolean) {
         context.dataStore.edit { it[Keys.LAUNCH_AS_HOME] = value }
     }

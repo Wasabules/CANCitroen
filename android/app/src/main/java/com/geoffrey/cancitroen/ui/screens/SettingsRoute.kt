@@ -39,7 +39,6 @@ fun SettingsRoute(vm: SettingsViewModel = viewModel()) {
     SettingsScreen(
         settings = settings,
         guardStatus = guardStatus,
-        onEmfAutostartChange = vm::setEmfAutostart,
         onLaunchAsHomeChange = { v ->
             vm.setLaunchAsHome(v)
             if (v) PermissionsHelper.openHomeSettings(ctx)

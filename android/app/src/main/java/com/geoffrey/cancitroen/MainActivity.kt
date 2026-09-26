@@ -79,7 +79,15 @@ import com.geoffrey.cancitroen.ui.theme.LocalAppBackgroundGradient
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
+/** Index de la page d'accueil dans le pager (à gauche : son, récap, stats ; à droite : tableau, EMF, réglages). */
+private const val HOME_PAGE = 3
+
+/** Demande de retour à l'accueil ; une instance par appui (clé de LaunchedEffect). */
+private class HomeRequest(val animate: Boolean)
+
 class MainActivity : ComponentActivity() {
+
+    private val homeRequest = mutableStateOf<HomeRequest?>(null)
 
     private val boundService: MutableState<CanService?> = mutableStateOf(null)
     private val connection = object : ServiceConnection {
@@ -122,16 +130,25 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Re-tap HOME (ou intent USB attach via l'activity-alias) quand l'activity
-     * est déjà au top : singleTask passe par ici, pas par onCreate. On
+     * singleTask : tout nouvel intent arrive ici (pas dans onCreate). On
      * réapplique l'immersif et on relance le GPS si l'utilisateur avait
-     * autorisé entre-temps. La page d'accueil reste celle où l'utilisateur
-     * était (pas de scrollToPage(3) intempestif).
+     * autorisé entre-temps.
+     *
+     * Intent **HOME** (touche HOME, bouton volant, garde root) : retour à la
+     * page d'accueil, comme un launcher — animé si l'app était déjà à l'écran,
+     * instantané si elle revient d'arrière-plan (même règle que Launcher3).
+     * Les autres intents (branchement USB via l'activity-alias) ne changent
+     * pas de page.
      */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         applyImmersiveMode()
         gpsTracker.start()
+        if (intent.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_HOME)) {
+            val alreadyOnHome = hasWindowFocus() &&
+                (intent.flags and Intent.FLAG_ACTIVITY_BROUGHT_TO_FRONT) == 0
+            homeRequest.value = HomeRequest(animate = alreadyOnHome)
+        }
     }
 
     /**
@@ -250,8 +267,17 @@ class MainActivity : ComponentActivity() {
         // Accueil = page centrale d'arrivée (index 3).
         // À gauche : EngineSound, Récap, Stats.
         // À droite : Tableau, EMF, Réglages.
-        val pagerState = rememberPagerState(initialPage = 3, pageCount = { pageCount })
+        val pagerState = rememberPagerState(initialPage = HOME_PAGE, pageCount = { pageCount })
         val pagerScope = rememberCoroutineScope()
+
+        // ── Touche HOME : retour à l'accueil depuis n'importe quelle page ──
+        val home = homeRequest.value
+        LaunchedEffect(home) {
+            if (home == null) return@LaunchedEffect
+            pickerSlot = null   // referme le sélecteur d'apps s'il était ouvert
+            if (home.animate) pagerState.animateScrollToPage(HOME_PAGE)
+            else pagerState.scrollToPage(HOME_PAGE)
+        }
 
         // ── Ambient idle : passe en mode estompé après inactivité ──
         // `lastInteraction` n'est lu que par le snapshotFlow ci-dessous : un
