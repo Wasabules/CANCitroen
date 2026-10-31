@@ -2,6 +2,7 @@ package com.geoffrey.cancitroen.settings
 
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import com.geoffrey.cancitroen.audio.ExhaustType
 import com.geoffrey.cancitroen.audio.EngineProfiles
 import com.geoffrey.cancitroen.audio.TurboRelease
@@ -57,6 +58,19 @@ data class BehaviorSettings(
     val aggressiveDisableLaunchers: Boolean = false,
 )
 
+/** Code d'association : 8 signes sans caractère ambigu, soit environ 40 bits. */
+internal object TransferCode {
+    private const val ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+    private const val LENGTH = 8
+
+    fun generate(): String {
+        val random = java.security.SecureRandom()
+        return String(CharArray(LENGTH) { ALPHABET[random.nextInt(ALPHABET.length)] })
+    }
+
+    fun display(code: String): String = code.chunked(LENGTH / 2).joinToString("-")
+}
+
 /** Outils dev. */
 data class DevSettings(
     val simulatorEnabled: Boolean = false,
@@ -64,6 +78,14 @@ data class DevSettings(
     val simulatorRecorded: Boolean = false,
     /** Serveur du test de liaison avec l'app compagnon. */
     val linkProbeEnabled: Boolean = false,
+    /** Envoi de l'historique à l'app compagnon. Téléphone associé : le brut reste 7 j, 30 j s'il n'a pas été reçu. */
+    val transferEnabled: Boolean = false,
+    /** Code d'association à usage unique, sans le tiret d'affichage. */
+    val transferCode: String = "",
+    /** Empreinte du jeton du téléphone associé ; vide : aucun téléphone. */
+    val transferTokenHash: String = "",
+    /** Dernier échantillon confirmé par le téléphone. */
+    val transferAckedId: Long = 0,
 )
 
 /** Carburant : prix, capacité du réservoir. */
@@ -132,6 +154,10 @@ class AppSettingsRepository(private val context: Context) {
         val SIMULATOR = booleanPreferencesKey("simulator_enabled")
         val SIMULATOR_RECORDED = booleanPreferencesKey("simulator_recorded")
         val LINK_PROBE = booleanPreferencesKey("link_probe_enabled")
+        val TRANSFER = booleanPreferencesKey("transfer_enabled")
+        val TRANSFER_CODE = stringPreferencesKey("transfer_code")
+        val TRANSFER_TOKEN_HASH = stringPreferencesKey("transfer_token_hash")
+        val TRANSFER_ACKED_ID = longPreferencesKey("transfer_acked_id")
         // FuelSettings
         val FUEL_PRICE = doublePreferencesKey("fuel_price_per_liter")
         val TANK_CAPACITY = floatPreferencesKey("tank_capacity_liters")
@@ -180,6 +206,10 @@ class AppSettingsRepository(private val context: Context) {
                 simulatorEnabled = prefs[Keys.SIMULATOR] ?: false,
                 simulatorRecorded = prefs[Keys.SIMULATOR_RECORDED] ?: false,
                 linkProbeEnabled = prefs[Keys.LINK_PROBE] ?: false,
+                transferEnabled = prefs[Keys.TRANSFER] ?: false,
+                transferCode = prefs[Keys.TRANSFER_CODE] ?: "",
+                transferTokenHash = prefs[Keys.TRANSFER_TOKEN_HASH] ?: "",
+                transferAckedId = prefs[Keys.TRANSFER_ACKED_ID] ?: 0,
             ),
             fuel = FuelSettings(
                 pricePerLiter = prefs[Keys.FUEL_PRICE] ?: 1.85,
@@ -242,6 +272,28 @@ class AppSettingsRepository(private val context: Context) {
     }
     suspend fun setLinkProbeEnabled(value: Boolean) {
         context.dataStore.edit { it[Keys.LINK_PROBE] = value }
+    }
+    suspend fun setTransferEnabled(value: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.TRANSFER] = value
+            if (value && prefs[Keys.TRANSFER_CODE].isNullOrEmpty()) prefs[Keys.TRANSFER_CODE] = TransferCode.generate()
+        }
+    }
+    /** Le code a servi : il ne vaut plus rien. */
+    suspend fun completeTransferPairing(tokenHash: String) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.TRANSFER_TOKEN_HASH] = tokenHash
+            prefs[Keys.TRANSFER_CODE] = TransferCode.generate()
+        }
+    }
+    suspend fun forgetTransferPhone() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(Keys.TRANSFER_TOKEN_HASH)
+            prefs[Keys.TRANSFER_CODE] = TransferCode.generate()
+        }
+    }
+    suspend fun setTransferAckedId(value: Long) {
+        context.dataStore.edit { it[Keys.TRANSFER_ACKED_ID] = value }
     }
     suspend fun setConsumptionFactor(value: Double) {
         context.dataStore.edit { it[Keys.CONSUMPTION_FACTOR] = value }

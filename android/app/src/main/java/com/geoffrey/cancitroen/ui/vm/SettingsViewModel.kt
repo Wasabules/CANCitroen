@@ -67,6 +67,9 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     fun setSimulatorEnabled(v: Boolean) = viewModelScope.launch { settings.setSimulatorEnabled(v) }
     fun setSimulatorRecorded(v: Boolean) = viewModelScope.launch { settings.setSimulatorRecorded(v) }
     fun setLinkProbeEnabled(v: Boolean) = viewModelScope.launch { settings.setLinkProbeEnabled(v) }
+    fun setTransferEnabled(v: Boolean) = viewModelScope.launch { settings.setTransferEnabled(v) }
+    fun forgetTransferPhone() = viewModelScope.launch { settings.forgetTransferPhone() }
+    suspend fun pendingSamples(ackedId: Long): Long = App.get().historyDao.countSamplesAfter(ackedId)
     fun setConsumptionFactor(v: Double) = viewModelScope.launch { settings.setConsumptionFactor(v) }
     fun setFuelPrice(v: Double) = viewModelScope.launch { settings.setFuelPrice(v) }
     fun setTankCapacity(v: Float) = viewModelScope.launch { settings.setTankCapacity(v) }

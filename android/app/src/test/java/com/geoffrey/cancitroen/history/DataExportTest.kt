@@ -1,12 +1,40 @@
 package com.geoffrey.cancitroen.history
 
+import com.geoffrey.cancitroen.history.entities.AggregatedSample
 import com.geoffrey.cancitroen.history.entities.RefuelEvent
 import com.geoffrey.cancitroen.history.entities.Trip
+import com.geoffrey.cancitroen.history.entities.VehicleSample
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DataExportTest {
+
+    @Test
+    fun echantillonsAvecNumeroEtValeursAbsentes() {
+        val lines = DataExport.samplesCsv(listOf(
+            VehicleSample(id = 7, ts = 0L, speedKmh = 52.5f, rpm = 2100f, fuelPct = 40, odoKm = 1000.5),
+            VehicleSample(id = 8, ts = 5000L),
+        )).trim().lines()
+        val columns = lines[0].split(";").size
+        assertEquals(3, lines.size)
+        assertTrue(lines.all { it.split(";").size == columns })
+        assertEquals("7", lines[1].split(";")[0])
+        assertEquals("52,5", lines[1].split(";")[4])
+        assertEquals("8", lines[2].split(";")[0])
+        assertEquals("", lines[2].split(";")[4])
+    }
+
+    @Test
+    fun agregatsAvecDureeDuBucket() {
+        val lines = DataExport.aggregatesCsv(listOf(
+            AggregatedSample(ts = 0L, bucketMs = 60_000L, count = 12, speedAvg = 30f),
+        )).trim().lines()
+        assertEquals(lines[0].split(";").size, lines[1].split(";").size)
+        assertEquals("0", lines[1].split(";")[1])
+        assertEquals("60", lines[1].split(";")[2])
+        assertEquals("12", lines[1].split(";")[3])
+    }
 
     @Test
     fun pleinsAuFormatTableurFrancais() {

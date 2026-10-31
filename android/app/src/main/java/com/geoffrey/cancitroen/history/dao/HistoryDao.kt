@@ -93,6 +93,26 @@ interface HistoryDao {
     @Query("SELECT MIN(ts) FROM vehicle_sample")
     suspend fun oldestSampleTs(): Long?
 
+    // ── Transfert vers le téléphone : les numéros ne resservent jamais (AUTOINCREMENT) ──
+    @Query("SELECT * FROM vehicle_sample WHERE id > :afterId AND id <= :upToId ORDER BY id ASC LIMIT :limit")
+    suspend fun samplesAfter(afterId: Long, upToId: Long, limit: Int): List<VehicleSample>
+
+    @Query("SELECT id FROM vehicle_sample ORDER BY id ASC")
+    suspend fun allSampleIds(): List<Long>
+
+    @Query("SELECT COUNT(*) FROM vehicle_sample WHERE id > :afterId")
+    suspend fun countSamplesAfter(afterId: Long): Long
+
+    @Query("SELECT MIN(ts) FROM vehicle_sample WHERE id > :afterId")
+    suspend fun oldestSampleTsAfter(afterId: Long): Long?
+
+    /** Dernier numéro attribué, même si l'échantillon a été agrégé depuis. */
+    @Query("SELECT seq FROM sqlite_sequence WHERE name = 'vehicle_sample'")
+    suspend fun lastSampleId(): Long?
+
+    @Query("SELECT * FROM vehicle_sample ORDER BY ts DESC LIMIT :limit")
+    suspend fun latestSamples(limit: Int): List<VehicleSample>
+
     // ── AggregatedSample (rollup) ──
     @Insert
     suspend fun insertAggregates(items: List<AggregatedSample>)
@@ -106,6 +126,12 @@ interface HistoryDao {
     /** Toutes les couches d'agrégats sur la plage (elles ne se recouvrent pas : le rollup supprime la source). */
     @Query("SELECT * FROM aggregated_sample WHERE ts >= :fromMs AND ts < :toMs ORDER BY ts ASC")
     suspend fun aggregatesAllInRangeOnce(fromMs: Long, toMs: Long): List<AggregatedSample>
+
+    @Query("SELECT * FROM aggregated_sample ORDER BY ts DESC LIMIT 1")
+    suspend fun latestAggregate(): AggregatedSample?
+
+    @Query("SELECT * FROM aggregated_sample ORDER BY ts ASC")
+    suspend fun allAggregatesOnce(): List<AggregatedSample>
 
     @Query("SELECT MIN(ts) FROM aggregated_sample WHERE bucketMs = :bucketMs")
     suspend fun oldestAggregateTs(bucketMs: Long): Long?

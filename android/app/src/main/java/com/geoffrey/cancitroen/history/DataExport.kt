@@ -6,8 +6,10 @@ import android.content.Context
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.room.withTransaction
+import com.geoffrey.cancitroen.history.entities.AggregatedSample
 import com.geoffrey.cancitroen.history.entities.RefuelEvent
 import com.geoffrey.cancitroen.history.entities.Trip
+import com.geoffrey.cancitroen.history.entities.VehicleSample
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.OutputStream
@@ -25,6 +27,7 @@ object DataExport {
     private const val DB_MIME = "application/octet-stream"
 
     private fun date(ts: Long?) = ts?.let { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.FRANCE).format(Date(it)) }.orEmpty()
+    private fun dateSeconds(ts: Long) = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.FRANCE).format(Date(ts))
     private fun num(v: Number?, decimals: Int = 2) = v?.let { "%.${decimals}f".format(Locale.FRANCE, it.toDouble()) }.orEmpty()
 
     fun refuelsCsv(refuels: List<RefuelEvent>): String = buildString {
@@ -48,6 +51,32 @@ object DataExport {
             append(listOf(
                 date(t.startTs), date(t.endTs), num(t.distanceKm, 1), num(t.avgSpeedKmh, 0), num(t.maxSpeedKmh, 0),
                 num(t.avgConsL100, 1), t.startFuelPct ?: "", t.endFuelPct ?: "",
+            ).joinToString(";")).append('\n')
+        }
+    }
+
+    /** Le numéro identifie la ligne : il permet de dédoublonner après un transfert interrompu. */
+    fun samplesCsv(samples: List<VehicleSample>): String = buildString {
+        append("id;date;ts_ms;trajet;vitesse_kmh;regime_tr_min;jauge_pct;litres;autonomie_km;")
+        append("t_eau;t_huile;t_ext;niveau_huile_pct;odometre_km;conso_inst_l100\n")
+        for (s in samples) {
+            append(listOf(
+                s.id, dateSeconds(s.ts), s.ts, s.tripId ?: "", num(s.speedKmh, 1), num(s.rpm, 0), s.fuelPct ?: "",
+                num(s.fuelLiters), s.rangeKm ?: "", s.tCoolant ?: "", s.tOil ?: "", s.tExt ?: "",
+                s.oilLevelPct ?: "", num(s.odoKm, 1), num(s.fuelInstL100, 1),
+            ).joinToString(";")).append('\n')
+        }
+    }
+
+    fun aggregatesCsv(aggregates: List<AggregatedSample>): String = buildString {
+        append("debut;ts_ms;duree_s;echantillons;vitesse_moy_kmh;vitesse_max_kmh;regime_moy;regime_max;jauge_pct;litres;")
+        append("t_eau_moy;t_eau_max;t_huile_moy;t_huile_max;t_ext_moy;t_ext_max;niveau_huile_pct;conso_moy_l100;odometre_km\n")
+        for (a in aggregates) {
+            append(listOf(
+                dateSeconds(a.ts), a.ts, a.bucketMs / 1000, a.count, num(a.speedAvg, 1), num(a.speedMax, 1), num(a.rpmAvg, 0),
+                num(a.rpmMax, 0), a.fuelPct ?: "", num(a.fuelLiters), a.tCoolantAvg ?: "", a.tCoolantMax ?: "",
+                a.tOilAvg ?: "", a.tOilMax ?: "", a.tExtAvg ?: "", a.tExtMax ?: "", a.oilLevelPct ?: "",
+                num(a.fuelInstAvg, 1), num(a.odoKm, 1),
             ).joinToString(";")).append('\n')
         }
     }

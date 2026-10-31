@@ -17,7 +17,8 @@ import kotlinx.coroutines.launch
  *
  *  Paliers (du plus fin au plus large) :
  *
- *    raw (5 s)        gardé sur 0 –   6 h
+ *    raw (5 s)        gardé sur 0 –   6 h ; avec un téléphone associé, 7 j pour qu'il
+ *                     puisse récupérer un manque, et jusqu'à 30 j s'il n'a pas été reçu
  *    1 min            gardé sur 6 h –   7 j
  *    30 min           gardé sur 7 j –  30 j
  *    1 h              gardé sur 30 j – 90 j
@@ -29,9 +30,17 @@ import kotlinx.coroutines.launch
  *   3. Insère dans la table cible
  *   4. Supprime les sources désormais agrégées
  */
+/** Ce qui retient le brut : un téléphone associé, et le plus ancien échantillon qu'il n'a pas confirmé. */
+data class RawHold(val phonePaired: Boolean, val oldestUnsentTs: Long?) {
+    companion object {
+        val NONE = RawHold(false, null)
+    }
+}
+
 class RollupAggregator(
     private val dao: HistoryDao,
     private val db: HistoryDatabase,
+    private val rawHold: suspend () -> RawHold = { RawHold.NONE },
 ) {
     companion object {
         private const val TAG = "Rollup"
@@ -43,9 +52,18 @@ class RollupAggregator(
         const val SIX_HOURS = 6L * 60L * 60_000L
 
         private const val RAW_RETENTION_MS = 6L * 60L * 60_000L            // 6 h
+        private const val RAW_CONFIRMED_RETENTION_MS = 7L * 24L * 60L * 60_000L  // 7 j
+        private const val RAW_UNSENT_RETENTION_MS = 30L * 24L * 60L * 60_000L    // 30 j
         private const val MIN1_RETENTION_MS = 7L * 24L * 60L * 60_000L     // 7 j
         private const val MIN30_RETENTION_MS = 30L * 24L * 60L * 60_000L   // 30 j
         private const val H1_RETENTION_MS = 90L * 24L * 60L * 60_000L      // 90 j
+
+        /** Le brut plus récent que ce seuil reste brut. */
+        internal fun rawCutoff(now: Long, hold: RawHold): Long {
+            val normal = now - if (hold.phonePaired) RAW_CONFIRMED_RETENTION_MS else RAW_RETENTION_MS
+            val unsent = hold.oldestUnsentTs ?: return normal
+            return minOf(normal, maxOf(unsent, now - RAW_UNSENT_RETENTION_MS))
+        }
     }
 
     private var job: Job? = null
@@ -71,8 +89,8 @@ class RollupAggregator(
     suspend fun runOnce() {
         val now = System.currentTimeMillis()
 
-        // Tier 1 : raw → 1min, pour les raw plus vieux que 6h
-        rollupRawTo1Min(now - RAW_RETENTION_MS)
+        // Tier 1 : raw → 1min, pour les raw plus vieux que leur rétention
+        rollupRawTo1Min(rawCutoff(now, rawHold()))
 
         // Tier 2 : 1min → 30min, pour les 1min plus vieux que 7j
         rollupAggToHigher(

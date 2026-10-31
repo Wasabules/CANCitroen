@@ -12,8 +12,8 @@ android {
         applicationId = "com.geoffrey.cancitroen.companion"
         minSdk = 29
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.1.1"
+        versionCode = 5
+        versionName = "0.2.2"
     }
 
     // Même clé locale que l'app de l'Atoto ; absente (clone du dépôt) : clé debug.
@@ -67,4 +67,6 @@ dependencies {
     implementation(libs.androidx.car.app)
 
     testImplementation(libs.junit)
+    // Android ne fournit qu'une coquille vide d'org.json aux tests JVM.
+    testImplementation(libs.json)
 }

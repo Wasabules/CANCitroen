@@ -100,3 +100,7 @@ le portage : toute modification se fait des deux côtés, avec une ligne dans
 
 Méthodes détaillées : [docs/terrain/methodologie.md](../docs/terrain/methodologie.md) ;
 commandes can-utils : [docs/terrain/cheatsheet.md](../docs/terrain/cheatsheet.md).
+
+## Test du compagnon
+
+`proxy_coupures.py` coupe le transfert du compagnon à un moment choisi (connexion, octets), pour vérifier la reprise sur émulateur. Mode d'emploi en tête de fichier. Un proxy resté d'un essai précédent garde le port : à arrêter avant d'en lancer un autre.

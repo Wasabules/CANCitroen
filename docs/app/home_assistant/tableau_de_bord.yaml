@@ -1,0 +1,162 @@
+# Tableau de bord « Voiture » : Paramètres → Tableaux de bord → Ajouter un tableau de bord,
+# puis ⋮ → Modifier → ⋮ → Éditeur de configuration et coller ce fichier.
+title: Voiture
+views:
+  - title: Citroën C2
+    path: c2
+    icon: mdi:car-hatchback
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: Maintenant
+            icon: mdi:car-hatchback
+          - type: gauge
+            entity: sensor.citroen_c2_jauge
+            name: Carburant
+            min: 0
+            max: 100
+            needle: true
+            severity:
+              red: 0
+              yellow: 15
+              green: 30
+            grid_options:
+              columns: 12
+              rows: 3
+          - type: tile
+            entity: sensor.citroen_c2_autonomie
+            name: Autonomie
+            color: green
+          - type: tile
+            entity: sensor.citroen_c2_carburant
+            name: Dans le réservoir
+            color: green
+          - type: tile
+            entity: binary_sensor.citroen_c2_android_auto
+            name: Android Auto
+            color: blue
+          - type: tile
+            entity: binary_sensor.citroen_c2_trajet_en_cours
+            name: Trajet
+            color: blue
+          - type: tile
+            entity: sensor.citroen_c2_odometre
+            name: Odomètre
+            grid_options:
+              columns: 12
+          - type: tile
+            entity: sensor.citroen_c2_dernier_releve
+            name: Dernier relevé
+            grid_options:
+              columns: 12
+      - type: grid
+        cards:
+          - type: heading
+            heading: Ce mois-ci
+            icon: mdi:calendar-month
+          - type: tile
+            entity: sensor.citroen_c2_depense_du_mois
+            name: Dépense
+            color: orange
+          - type: tile
+            entity: sensor.citroen_c2_carburant_du_mois
+            name: Carburant
+            color: orange
+          - type: tile
+            entity: sensor.citroen_c2_distance_du_mois
+            name: Distance
+            color: teal
+          - type: tile
+            entity: sensor.citroen_c2_trajets_du_mois
+            name: Trajets
+            color: teal
+          - type: tile
+            entity: sensor.citroen_c2_conso_du_mois
+            name: Conso moyenne
+            color: teal
+            grid_options:
+              columns: 12
+          - type: heading
+            heading: Dernier plein
+            icon: mdi:gas-station
+          - type: markdown
+            content: >-
+              {% set p = 'sensor.citroen_c2_dernier_plein' %}
+              {% if states(p) in ['unknown', 'unavailable'] %}Aucun plein enregistré.
+              {% else %}**{{ as_timestamp(states(p)) | timestamp_custom('%d/%m/%Y à %H:%M') }}** :
+              {{ state_attr(p, 'litres') }} L,
+              {{ state_attr(p, 'montant_eur') }} €{% if state_attr(p, 'estimation') %} (estimation, ticket non saisi){% endif %}{% endif %}
+          - type: tile
+            entity: sensor.citroen_c2_prix_du_litre
+            name: Prix du litre
+            grid_options:
+              columns: 12
+      - type: grid
+        cards:
+          - type: heading
+            heading: Dernier trajet
+            icon: mdi:map-marker-path
+          - type: tile
+            entity: sensor.citroen_c2_dernier_trajet
+            name: Distance
+            color: purple
+          - type: tile
+            entity: sensor.citroen_c2_conso_dernier_trajet
+            name: Conso
+            color: purple
+          - type: markdown
+            content: >-
+              {% set t = 'sensor.citroen_c2_dernier_trajet' %}
+              {% if state_attr(t, 'arrivee') %}Arrivée le
+              {{ as_timestamp(state_attr(t, 'arrivee')) | timestamp_custom('%d/%m à %H:%M') }},
+              {{ state_attr(t, 'duree_min') }} min,
+              {{ state_attr(t, 'vitesse_moyenne_kmh') | int(0) }} km/h de moyenne,
+              {{ state_attr(t, 'vitesse_max_kmh') | int(0) }} km/h au maximum.
+              {% else %}Aucun trajet terminé.{% endif %}
+          - type: heading
+            heading: Moteur
+            icon: mdi:engine
+          - type: tile
+            entity: sensor.citroen_c2_temperature_eau
+            name: Eau
+          - type: tile
+            entity: sensor.citroen_c2_temperature_huile
+            name: Huile
+          - type: tile
+            entity: sensor.citroen_c2_niveau_huile
+            name: Niveau d'huile
+          - type: tile
+            entity: sensor.citroen_c2_temperature_exterieure
+            name: Extérieur
+      - type: grid
+        column_span: 3
+        cards:
+          - type: heading
+            heading: Évolution
+            icon: mdi:chart-line
+          - type: statistics-graph
+            title: Jauge, 30 jours
+            entities:
+              - sensor.citroen_c2_jauge
+            days_to_show: 30
+            period: day
+            stat_types:
+              - mean
+              - min
+            chart_type: line
+            grid_options:
+              columns: 12
+          - type: statistics-graph
+            title: Consommation par trajet, 90 jours
+            entities:
+              - sensor.citroen_c2_conso_dernier_trajet
+            days_to_show: 90
+            period: week
+            stat_types:
+              - mean
+            chart_type: line
+            grid_options:
+              columns: 12

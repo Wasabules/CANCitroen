@@ -15,8 +15,8 @@ android {
         applicationId = "com.geoffrey.cancitroen"
         minSdk = 29              // Android 10 (Atoto A6PF tourne >= 10)
         targetSdk = 36
-        versionCode = 36
-        versionName = "0.1.36"
+        versionCode = 38
+        versionName = "0.1.38"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

@@ -1,0 +1,77 @@
+# À ajouter à automations.yaml (ou Paramètres → Automatisations → ⋮ → Modifier en YAML).
+# Les notifications restent dans Home Assistant. Pour les recevoir sur le téléphone,
+# remplace `persistent_notification.create` par `notify.mobile_app_<ton_telephone>`,
+# fourni par l'app officielle Home Assistant.
+
+- id: cancitroen_carburant_bas
+  alias: "Voiture : carburant bas"
+  description: La jauge passe sous 15 %.
+  mode: single
+  triggers:
+    - trigger: numeric_state
+      entity_id: sensor.citroen_c2_jauge
+      below: 15
+  actions:
+    - action: persistent_notification.create
+      data:
+        notification_id: voiture_carburant
+        title: Pense au plein
+        message: >-
+          Jauge à {{ states('sensor.citroen_c2_jauge') }} %,
+          environ {{ states('sensor.citroen_c2_autonomie') }} km d'autonomie.
+
+- id: cancitroen_huile_basse
+  alias: "Voiture : niveau d'huile bas"
+  description: Seuil à ajuster à ta voiture, l'échelle du niveau d'huile n'est pas calibrée.
+  mode: single
+  triggers:
+    - trigger: numeric_state
+      entity_id: sensor.citroen_c2_niveau_huile
+      below: 25
+  actions:
+    - action: persistent_notification.create
+      data:
+        notification_id: voiture_huile
+        title: Niveau d'huile à contrôler
+        message: Le dernier relevé indique {{ states('sensor.citroen_c2_niveau_huile') }} %.
+
+- id: cancitroen_plein_a_saisir
+  alias: "Voiture : ticket de plein à saisir"
+  description: Le plein détecté reste une estimation tant que le ticket n'est pas saisi sur l'autoradio.
+  mode: single
+  triggers:
+    - trigger: state
+      entity_id: sensor.citroen_c2_dernier_plein
+  conditions:
+    - condition: template
+      value_template: "{{ state_attr('sensor.citroen_c2_dernier_plein', 'estimation') == true }}"
+  actions:
+    - action: persistent_notification.create
+      data:
+        notification_id: voiture_ticket
+        title: Plein détecté
+        message: >-
+          Environ {{ state_attr('sensor.citroen_c2_dernier_plein', 'litres') }} L.
+          Saisis le ticket sur l'autoradio pour affiner le prix et la capacité du réservoir.
+
+- id: cancitroen_bilan_mensuel
+  alias: "Voiture : bilan du mois"
+  description: Le dernier jour du mois, à 20 h. Les valeurs datent du dernier transfert.
+  mode: single
+  triggers:
+    - trigger: time
+      at: "20:00:00"
+  conditions:
+    - condition: template
+      value_template: "{{ (now() + timedelta(days=1)).day == 1 }}"
+  actions:
+    - action: persistent_notification.create
+      data:
+        notification_id: voiture_bilan
+        title: Bilan voiture du mois
+        message: >-
+          {{ states('sensor.citroen_c2_distance_du_mois') }} km en
+          {{ states('sensor.citroen_c2_trajets_du_mois') }} trajets,
+          {{ states('sensor.citroen_c2_carburant_du_mois') }} L pour
+          {{ states('sensor.citroen_c2_depense_du_mois') }} €{% if is_number(states('sensor.citroen_c2_conso_du_mois')) %},
+          {{ states('sensor.citroen_c2_conso_du_mois') }} L/100 km en moyenne{% endif %}.

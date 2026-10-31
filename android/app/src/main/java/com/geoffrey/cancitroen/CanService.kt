@@ -23,9 +23,12 @@ import com.geoffrey.cancitroen.audio.EngineProfiles
 import com.geoffrey.cancitroen.audio.EngineSoundSynth
 import com.geoffrey.cancitroen.audio.MemeEngineCatalog
 import com.geoffrey.cancitroen.emf.EmfController
+import com.geoffrey.cancitroen.history.RawHold
 import com.geoffrey.cancitroen.history.RollupAggregator
 import com.geoffrey.cancitroen.history.VehicleHistoryRecorder
-import com.geoffrey.cancitroen.link.LinkProbeServer
+import com.geoffrey.cancitroen.link.HistoryTelemetrySource
+import com.geoffrey.cancitroen.link.LinkServer
+import com.geoffrey.cancitroen.link.TlsIdentity
 import com.geoffrey.cancitroen.sim.VehicleSimulator
 import com.geoffrey.cancitroen.swc.SteeringWheelHandler
 import com.geoffrey.cancitroen.system.LauncherGuard
@@ -37,6 +40,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.stateIn
@@ -133,7 +137,16 @@ class CanService : Service() {
     }
     private val rollupAggregator by lazy {
         RollupAggregator(App.get().historyDao,
-            com.geoffrey.cancitroen.history.HistoryDatabase.get(this))
+            com.geoffrey.cancitroen.history.HistoryDatabase.get(this),
+            rawHold = {
+                val dev = App.get().settings.flow.first().dev
+                // Sans téléphone associé, rien n'attend : la rétention reste celle d'origine.
+                if (dev.transferEnabled && dev.transferTokenHash.isNotEmpty()) {
+                    RawHold(true, App.get().historyDao.oldestSampleTsAfter(dev.transferAckedId))
+                } else {
+                    RawHold.NONE
+                }
+            })
     }
     private val engineSynth get() = App.get().engineSynth
     private val memeRunner get() = App.get().memeEngineRunner
@@ -317,17 +330,20 @@ class CanService : Service() {
                 }
         }
 
-        // Serveur du test de liaison avec l'app compagnon
+        // Serveur de l'app compagnon : test de liaison et transfert de l'historique
         scope.launch {
             App.get().settings.flow
-                .map { it.dev.linkProbeEnabled }
+                .map { it.dev.linkProbeEnabled to it.dev.transferEnabled }
                 .distinctUntilChanged()
-                .collect { enabled ->
-                    if (enabled) {
-                        LinkProbeServer.start(packageManager.getPackageInfo(packageName, 0).versionName.orEmpty())
-                    } else {
-                        LinkProbeServer.stop()
-                    }
+                .collect { (probe, transfer) ->
+                    val identity = if (transfer) loadTlsIdentity() else null
+                    LinkServer.configure(
+                        packageManager.getPackageInfo(packageName, 0).versionName.orEmpty(),
+                        probe,
+                        identity?.let { HistoryTelemetrySource(App.get().historyDao, App.get().settings, it.fingerprint) },
+                        identity?.serverSockets,
+                    )
+                    if (transfer && identity == null) LinkServer.reportError("certificat indisponible")
                 }
         }
 
@@ -412,8 +428,22 @@ class CanService : Service() {
         }
     }
 
+    /** Un magasin de clés défaillant ne doit pas faire tomber le launcher de la voiture. */
+    private fun loadTlsIdentity(): TlsIdentity? = try {
+        TlsIdentity.load()
+    } catch (e: java.security.GeneralSecurityException) {
+        Log.e(TAG, "Certificat du transfert indisponible", e)
+        null
+    } catch (e: java.io.IOException) {
+        Log.e(TAG, "Certificat du transfert indisponible", e)
+        null
+    } catch (e: IllegalStateException) {
+        Log.e(TAG, "Certificat du transfert indisponible", e)
+        null
+    }
+
     override fun onDestroy() {
-        LinkProbeServer.stop()
+        LinkServer.stop()
         try { unregisterReceiver(usbPermissionReceiver) } catch (_: Exception) {}
         try { unregisterReceiver(usbAttachReceiver) } catch (_: Exception) {}
         releaseWakeLock()

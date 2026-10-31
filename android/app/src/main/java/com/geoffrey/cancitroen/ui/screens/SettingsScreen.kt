@@ -32,7 +32,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.geoffrey.cancitroen.history.DataExport
 import com.geoffrey.cancitroen.history.FuelCalibration
-import com.geoffrey.cancitroen.link.LinkProbeServer
+import com.geoffrey.cancitroen.link.LinkServer
+import com.geoffrey.cancitroen.settings.TransferCode
 import com.geoffrey.cancitroen.settings.AppSettings
 import com.geoffrey.cancitroen.swc.SwcAction
 import com.geoffrey.cancitroen.swc.SwcButton
@@ -81,8 +82,11 @@ fun SettingsScreen(
     onExportData: () -> Unit,
     onConsumptionFactorChange: (Double) -> Unit,
     onSimulatorRecordedChange: (Boolean) -> Unit,
-    linkProbeStatus: LinkProbeServer.Status,
+    linkProbeStatus: LinkServer.Status,
     onLinkProbeChange: (Boolean) -> Unit,
+    onTransferChange: (Boolean) -> Unit,
+    onForgetTransferPhone: () -> Unit,
+    pendingSamples: suspend (Long) -> Long,
     onLaunchAsHomeChange: (Boolean) -> Unit,
     onForceHomeRootChange: (Boolean) -> Unit,
     onAggressiveDisableChange: (Boolean) -> Unit,
@@ -333,10 +337,29 @@ fun SettingsScreen(
                     )
                 }
                 SectionCard("App compagnon", icon = AppIcons.PhoneAndroid) {
+                    SwitchRow("Transfert vers le téléphone", settings.dev.transferEnabled, onTransferChange)
+                    Text(
+                        "Envoie l'historique, chiffré, au téléphone associé sur le Wi-Fi d'Android Auto. Les échantillons " +
+                            "de 5 s sont gardés 7 jours après réception, et 30 jours au plus sans réception.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (settings.dev.transferEnabled) {
+                        if (settings.dev.transferTokenHash.isEmpty()) {
+                            Text(
+                                "Code à saisir sur le téléphone : ${TransferCode.display(settings.dev.transferCode)}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        } else {
+                            TransferStatusText(settings.dev.transferAckedId, linkProbeStatus, pendingSamples)
+                            OutlinedButton(onClick = onForgetTransferPhone) { Text("Oublier ce téléphone") }
+                        }
+                    }
                     SwitchRow("Test de liaison avec le téléphone",
                         settings.dev.linkProbeEnabled, onLinkProbeChange)
                     Text(
-                        "Répond au test de l'app compagnon sur le port ${LinkProbeServer.PORT}, sans envoyer de données du véhicule.",
+                        "Répond au test de l'app compagnon sur le port ${LinkServer.PORT}, sans envoyer de données du véhicule.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -491,10 +514,31 @@ private fun LauncherStatusRow(
 }
 
 @Composable
-private fun LinkProbeStatusText(status: LinkProbeServer.Status) {
+private fun TransferStatusText(
+    ackedId: Long,
+    status: LinkServer.Status,
+    pendingSamples: suspend (Long) -> Long,
+) {
+    var pending by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(ackedId) {
+        while (true) {
+            pending = pendingSamples(ackedId)
+            delay(5_000)
+        }
+    }
+    val text = buildString {
+        status.error?.let { append("Serveur arrêté : ").append(it).append('\n') }
+        append("Téléphone associé. En attente : ").append(pending ?: "…").append(" échantillons")
+        status.lastTransfer?.let { append(" · dernier envoi : ").append(it) }
+    }
+    Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+}
+
+@Composable
+private fun LinkProbeStatusText(status: LinkServer.Status) {
     LaunchedEffect(Unit) {
         while (true) {
-            withContext(Dispatchers.IO) { LinkProbeServer.refreshAddresses() }
+            withContext(Dispatchers.IO) { LinkServer.refreshAddresses() }
             delay(5_000)
         }
     }

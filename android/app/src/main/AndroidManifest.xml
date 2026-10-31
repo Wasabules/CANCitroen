@@ -5,7 +5,7 @@
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
 
-    <!-- Test de liaison avec l'app compagnon (link/LinkProbeServer) : désactivé par défaut. -->
+    <!-- Test de liaison avec l'app compagnon (link/LinkServer) : désactivé par défaut. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
