@@ -2,6 +2,7 @@ package com.geoffrey.cancitroen.history
 
 import android.content.Context
 import android.util.Log
+import androidx.room.AutoMigration
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
@@ -18,7 +19,11 @@ import com.geoffrey.cancitroen.history.entities.VehicleSample
         Trip::class,
         com.geoffrey.cancitroen.history.entities.AggregatedSample::class,
     ],
-    version = 5,
+    version = 7,
+    autoMigrations = [
+        AutoMigration(from = 5, to = 6),
+        AutoMigration(from = 6, to = 7),
+    ],
     // Schéma exporté dans app/schemas/ : tout bump de `version` doit
     // s'accompagner d'un `autoMigrations = [AutoMigration(from = N, to = N+1)]`
     // (ou d'une Migration manuelle), sinon l'historique est effacé.
@@ -41,9 +46,11 @@ abstract class HistoryDatabase : RoomDatabase() {
                 // launcher de la voiture, elle ne doit jamais crasher en boucle au
                 // démarrage. Les vraies évolutions passent par des migrations.
                 .fallbackToDestructiveMigration(dropAllTables = true)
+                // Copie de la base avant toute migration, destructive comprise.
+                .openHelperFactory(BackupBeforeMigrationFactory(context.applicationContext))
                 .addCallback(object : Callback() {
                     override fun onDestructiveMigration(db: SupportSQLiteDatabase) {
-                        Log.w(TAG, "⚠ Migration destructive : tout l'historique a été effacé suite au bump de version Room")
+                        Log.w(TAG, "⚠ Migration destructive : historique effacé, copie dans databases/${HistoryBackup.DIR}/")
                     }
                 })
                 .build()

@@ -8,36 +8,27 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.geoffrey.cancitroen.history.UnifiedDataPoint
 import com.geoffrey.cancitroen.ui.components.ChartSeries
 import com.geoffrey.cancitroen.ui.components.GlassCard
 import com.geoffrey.cancitroen.ui.components.MiniBarChart
 import com.geoffrey.cancitroen.ui.components.MultiLineChart
+import com.geoffrey.cancitroen.ui.components.SectionTitle
 import com.geoffrey.cancitroen.ui.components.TimeRange
-import com.geoffrey.cancitroen.ui.components.aggregateByDay
-import com.geoffrey.cancitroen.ui.components.aggregateMean
 import com.geoffrey.cancitroen.ui.components.formatTooltipTs
 import com.geoffrey.cancitroen.ui.components.formatTsForWindow
-import com.geoffrey.cancitroen.ui.theme.Dim
+import com.geoffrey.cancitroen.ui.theme.AppIcons
 
 @Composable
-internal fun EngineTempSection(points: List<UnifiedDataPoint>, range: TimeRange) {
-    // Au-delà de 7 j : passe en bar chart "T° max par jour" (lecture santé moteur)
-    val showDailyMax = range.durationMs > 7L * 24 * 3600 * 1000
-    // Calculé une fois par jeu de points, pas à chaque recomposition.
-    val d = remember(points, showDailyMax) { computeEngineTemp(points, showDailyMax) }
-    if (!d.hasEnough) return
+internal fun EngineTempSection(d: EngineTempData, range: TimeRange) {
+    val showDailyMax = d.dailyMax
 
     GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
-            Text("🌡️ Températures moteur",
-                color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold,
-                style = MaterialTheme.typography.titleMedium)
+        Column(modifier = Modifier.fillMaxWidth()) {
+            SectionTitle("Températures moteur", AppIcons.Thermostat)
             if (showDailyMax) {
                 Text("T° max atteinte chaque jour (eau / huile)",
                     color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
@@ -128,40 +119,4 @@ internal fun EngineTempSection(points: List<UnifiedDataPoint>, range: TimeRange)
             }
         }
     }
-}
-
-private class EngineTempData(
-    val hasEnough: Boolean,
-    val coolantMaxByDay: List<Pair<String, Double>> = emptyList(),
-    val oilMaxByDay: List<Pair<String, Double>> = emptyList(),
-    val extMaxByDay: List<Pair<String, Double>> = emptyList(),
-    val coolant: List<Pair<Double, Double>> = emptyList(),
-    val oil: List<Pair<Double, Double>> = emptyList(),
-    val ext: List<Pair<Double, Double>> = emptyList(),
-)
-
-private fun computeEngineTemp(points: List<UnifiedDataPoint>, dailyMax: Boolean): EngineTempData {
-    fun series(sel: (UnifiedDataPoint) -> Int?) =
-        points.mapNotNull { p -> sel(p)?.let { p.ts.toDouble() to it.toDouble() } }
-    val coolantRaw = series { it.tCoolant }
-    val oilRaw = series { it.tOil }
-    val extRaw = series { it.tExt }
-    if (coolantRaw.size + oilRaw.size + extRaw.size < 2) return EngineTempData(hasEnough = false)
-    if (!dailyMax) {
-        return EngineTempData(
-            hasEnough = true,
-            coolant = aggregateMean(coolantRaw, 200),
-            oil = aggregateMean(oilRaw, 200),
-            ext = aggregateMean(extRaw, 200),
-        )
-    }
-    // Pour les rollups, utiliser tCoolantMax/tOilMax/tExtMax si dispo (sinon = valeur instantanée)
-    fun maxOrRaw(sel: (UnifiedDataPoint) -> Int?, raw: List<Pair<Double, Double>>) =
-        series(sel).ifEmpty { raw }
-    return EngineTempData(
-        hasEnough = true,
-        coolantMaxByDay = aggregateByDay(maxOrRaw({ it.tCoolantMax }, coolantRaw), reducer = { it.max() }),
-        oilMaxByDay = aggregateByDay(maxOrRaw({ it.tOilMax }, oilRaw), reducer = { it.max() }),
-        extMaxByDay = aggregateByDay(maxOrRaw({ it.tExtMax }, extRaw), reducer = { it.max() }),
-    )
 }

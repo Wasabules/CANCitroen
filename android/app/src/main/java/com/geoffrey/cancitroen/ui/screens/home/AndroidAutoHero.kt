@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,6 +30,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.runtime.getValue
 import com.geoffrey.cancitroen.system.AppShortcuts
 import com.geoffrey.cancitroen.ui.components.GlassCard
+import com.geoffrey.cancitroen.ui.theme.AppIcons
 import com.geoffrey.cancitroen.ui.theme.LocalNightMode
 
 @Composable
@@ -92,7 +94,7 @@ fun AndroidAutoHero(
                     .background(MaterialTheme.colorScheme.primary),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("▶", color = MaterialTheme.colorScheme.onPrimary, fontSize = 20.sp)
+                Icon(AppIcons.PlayArrow, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(28.dp))
             }
         }
     }

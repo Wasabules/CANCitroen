@@ -2,8 +2,11 @@ package com.geoffrey.cancitroen.ui.screens.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.*
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -20,7 +23,10 @@ import com.geoffrey.cancitroen.swc.SwcDispatcher
 import com.geoffrey.cancitroen.swc.SwcEndpoint
 import com.geoffrey.cancitroen.swc.SwcMapping
 import com.geoffrey.cancitroen.swc.allowedEndpoints
+import com.geoffrey.cancitroen.ui.components.DropdownPicker
 import com.geoffrey.cancitroen.ui.components.SectionCard
+import com.geoffrey.cancitroen.ui.theme.AppIcons
+import com.geoffrey.cancitroen.ui.theme.Ok
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -42,7 +48,7 @@ fun SwcMappingSection(
     var lastTested by remember { mutableStateOf<Pair<SwcButton, Long>?>(null) }
     val scope = rememberCoroutineScope()
 
-    SectionCard("🎛 Mapping des boutons volant") {
+    SectionCard("Boutons au volant", icon = AppIcons.Tune) {
         Text(
             "Pour chaque bouton physique du comodo, choisis UNE action et UN canal de diffusion. " +
                 "Plusieurs canaux simultanés provoquent des doubles déclenchements (typiquement Android Auto qui saute deux pistes).",
@@ -61,11 +67,11 @@ fun SwcMappingSection(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("📡 Test live", fontWeight = FontWeight.Bold)
+            Text("Test en direct", fontWeight = FontWeight.SemiBold)
             val label = lastDetected?.displayName ?: if (lastRaw != 0) "raw 0x%02X (inconnu)".format(lastRaw) else "—"
             Text(
                 label,
-                color = if (lastDetected != null) Color(0xFF66BB6A) else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (lastDetected != null) Ok else MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
             )
             Spacer(Modifier.weight(1f))
@@ -134,22 +140,23 @@ private fun ButtonMappingRow(
             .padding(vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        // En-tête : nom du bouton + badge "✓ envoyé" éphémère après un test
+        // En-tête : nom du bouton + badge « Envoyé » éphémère après un test
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                "🔘 ${button.displayName}",
+                button.displayName,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f),
             )
             if (justTested) {
+                Icon(AppIcons.Check, contentDescription = null, tint = Ok, modifier = Modifier.size(16.dp))
                 Text(
-                    "✓ envoyé",
+                    "Envoyé",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF66BB6A),
+                    color = Ok,
                     fontWeight = FontWeight.SemiBold,
                 )
             }
@@ -186,64 +193,10 @@ private fun ButtonMappingRow(
                     onClick = onTest,
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                 ) {
-                    Text("▶ Tester", style = MaterialTheme.typography.bodyMedium)
+                    Text("Tester", style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
         HorizontalDivider(modifier = Modifier.padding(top = 4.dp))
-    }
-}
-
-@Composable
-private fun <T> DropdownPicker(
-    label: String,
-    currentLabel: String,
-    sublabel: String? = null,
-    options: List<T>,
-    optionLabel: (T) -> String,
-    optionSublabel: ((T) -> String)? = null,
-    onSelect: (T) -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    Column {
-        Text(label, style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        OutlinedButton(
-            onClick = { expanded = true },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(currentLabel, style = MaterialTheme.typography.bodyMedium)
-                if (sublabel != null) Text(
-                    sublabel,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Text("▾")
-        }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-        ) {
-            options.forEach { opt ->
-                DropdownMenuItem(
-                    text = {
-                        Column {
-                            Text(optionLabel(opt))
-                            if (optionSublabel != null) Text(
-                                optionSublabel(opt),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    },
-                    onClick = {
-                        expanded = false
-                        onSelect(opt)
-                    },
-                )
-            }
-        }
     }
 }

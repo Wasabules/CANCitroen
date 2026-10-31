@@ -12,7 +12,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.geoffrey.cancitroen.ui.components.EmptyHint
 import com.geoffrey.cancitroen.ui.components.GlassCard
+import com.geoffrey.cancitroen.ui.theme.AppIcons
 import com.geoffrey.cancitroen.ui.theme.Dim
 import com.geoffrey.cancitroen.ui.theme.Text as TextColor
 import java.text.SimpleDateFormat
@@ -22,23 +24,7 @@ import java.util.Locale
 @Composable
 internal fun EmptyState() {
     GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text("📈", fontSize = 36.sp)
-            Text(
-                "Pas encore de données",
-                color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                "L'app commence à enregistrer ton véhicule dès que le contact est mis. Active le simulateur dans Réglages pour générer des données de démo.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
+        EmptyHint(AppIcons.ShowChart, "Pas encore de données", "L'app commence à enregistrer ton véhicule dès que le contact est mis. Active le simulateur dans Réglages pour générer des données de démo.")
     }
 }
 

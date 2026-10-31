@@ -45,7 +45,7 @@ interface HistoryDao {
 
     /** Fenêtre bornée des deux côtés (Stats ≤ 6 h) : une plage passée ne charge pas tout jusqu'à maintenant. */
     @Query("SELECT * FROM vehicle_sample WHERE ts >= :fromMs AND ts <= :toMs ORDER BY ts ASC")
-    fun samplesInRangeFlow(fromMs: Long, toMs: Long): Flow<List<VehicleSample>>
+    suspend fun samplesInRangeOnce(fromMs: Long, toMs: Long): List<VehicleSample>
 
     /** Sous-ensemble borné dans le temps — utilisé par les UI live pour ne
      *  pas materialiser des milliers de rows sur un trip de plusieurs heures. */
@@ -105,7 +105,7 @@ interface HistoryDao {
 
     /** Toutes les couches d'agrégats sur la plage (elles ne se recouvrent pas : le rollup supprime la source). */
     @Query("SELECT * FROM aggregated_sample WHERE ts >= :fromMs AND ts < :toMs ORDER BY ts ASC")
-    fun aggregatesAllInRange(fromMs: Long, toMs: Long): Flow<List<AggregatedSample>>
+    suspend fun aggregatesAllInRangeOnce(fromMs: Long, toMs: Long): List<AggregatedSample>
 
     @Query("SELECT MIN(ts) FROM aggregated_sample WHERE bucketMs = :bucketMs")
     suspend fun oldestAggregateTs(bucketMs: Long): Long?
@@ -125,6 +125,39 @@ interface HistoryDao {
 
     @Query("SELECT * FROM refuel_event ORDER BY ts DESC LIMIT 1")
     suspend fun lastRefuel(): RefuelEvent?
+
+    @Update
+    suspend fun updateRefuel(event: RefuelEvent)
+
+    @Query("DELETE FROM refuel_event WHERE id = :id")
+    suspend fun deleteRefuel(id: Long)
+
+    @Query("SELECT * FROM refuel_event ORDER BY ts ASC")
+    suspend fun allRefuelsOnce(): List<RefuelEvent>
+
+    @Query("SELECT * FROM trip ORDER BY startTs ASC")
+    suspend fun allTripsOnce(): List<Trip>
+
+    @Query("SELECT odoKm FROM vehicle_sample WHERE odoKm IS NOT NULL ORDER BY ts DESC LIMIT 1")
+    suspend fun lastSampleOdoKm(): Double?
+
+    @Query("SELECT odoKm FROM aggregated_sample WHERE odoKm IS NOT NULL ORDER BY ts DESC LIMIT 1")
+    suspend fun lastAggregateOdoKm(): Double?
+
+    /** Plein le plus récent dont le ticket reste à saisir. */
+    @Query("SELECT * FROM refuel_event WHERE awaitingInput = 1 ORDER BY ts DESC LIMIT 1")
+    fun pendingRefuel(): Flow<RefuelEvent?>
+
+    @Query("SELECT * FROM refuel_event WHERE userEntered = 1 ORDER BY ts DESC LIMIT 50")
+    fun enteredRefuels(): Flow<List<RefuelEvent>>
+
+    // Dernier niveau connu, pour voir un plein fait pendant que l'app ne tournait
+    // pas : le brut est purgé après 6 h, les agrégats gardent la dernière valeur.
+    @Query("SELECT fuelPct FROM vehicle_sample WHERE fuelPct BETWEEN 1 AND 100 ORDER BY ts DESC LIMIT 1")
+    suspend fun lastSampleFuelPct(): Int?
+
+    @Query("SELECT fuelPct FROM aggregated_sample WHERE fuelPct BETWEEN 1 AND 100 ORDER BY ts DESC LIMIT 1")
+    suspend fun lastAggregateFuelPct(): Int?
 
     // ── Trip ──
     @Insert

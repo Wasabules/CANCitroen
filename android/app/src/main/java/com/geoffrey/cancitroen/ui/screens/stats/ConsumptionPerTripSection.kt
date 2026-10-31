@@ -15,6 +15,8 @@ import androidx.compose.ui.unit.dp
 import com.geoffrey.cancitroen.history.entities.Trip
 import com.geoffrey.cancitroen.ui.components.GlassCard
 import com.geoffrey.cancitroen.ui.components.MiniBarChart
+import com.geoffrey.cancitroen.ui.components.SectionTitle
+import com.geoffrey.cancitroen.ui.theme.AppIcons
 
 @Composable
 internal fun ConsumptionPerTripSection(trips: List<Trip>) {
@@ -27,10 +29,8 @@ internal fun ConsumptionPerTripSection(trips: List<Trip>) {
     if (bars.isEmpty()) return
 
     GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
-            Text("⛽ Conso moyenne par trajet",
-                color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold,
-                style = MaterialTheme.typography.titleMedium)
+        Column(modifier = Modifier.fillMaxWidth()) {
+            SectionTitle("Conso moyenne par trajet", AppIcons.LocalGasStation)
             Spacer(Modifier.height(12.dp))
             MiniBarChart(
                 bars = bars,

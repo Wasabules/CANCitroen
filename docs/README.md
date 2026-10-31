@@ -9,6 +9,7 @@
 | Comprendre l'app Android | [app/architecture.md](app/architecture.md) |
 | Construire, tester, livrer l'app | [app/developpement.md](app/developpement.md) |
 | Le launcher forcé par root | [app/launcher_root.md](app/launcher_root.md) |
+| Tester la liaison avec le téléphone | [app/compagnon.md](app/compagnon.md) |
 | Utiliser les scripts PC | [../scripts/README.md](../scripts/README.md) |
 
 ## Contenu
@@ -37,6 +38,7 @@
 | [architecture.md](app/architecture.md) | pipeline CAN, service, état, volant, EMF, historique, UI | **à jour** |
 | [developpement.md](app/developpement.md) | chaîne d'outils, commandes, tests, livraison, déploiement, migrations Room | **à jour** |
 | [launcher_root.md](app/launcher_root.md) | launcher forcé : analyse du ROM FYT, mécanisme, fichiers, diagnostic | **à jour** |
+| [compagnon.md](app/compagnon.md) | app compagnon : test de liaison pendant Android Auto sans fil, procédure sur la voiture | **à jour** |
 | [atoto_a6pf_integration.md](app/atoto_a6pf_integration.md) | options d'architecture envisagées (bridge PC, app, ESP32) | réflexion initiale |
 | [android_app_spec.md](app/android_app_spec.md) | spécification d'origine de l'app | **historique** : l'app a évolué, voir architecture.md |
 

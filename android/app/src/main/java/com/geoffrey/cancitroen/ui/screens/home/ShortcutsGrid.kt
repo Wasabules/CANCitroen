@@ -225,8 +225,8 @@ private fun EmptyTile(
     Box(
         modifier = modifier
             .clip(shape)
-            .background(GlassBg.copy(alpha = 0.4f))
-            .border(2.dp, GlassBorder.copy(alpha = 0.5f), shape)
+            .background(GlassBg)
+            .border(2.dp, GlassBorder, shape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {

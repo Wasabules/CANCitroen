@@ -47,10 +47,17 @@ class GpsTracker(private val context: Context) {
     private var watchdogRunnable: Runnable? = null
     @Volatile private var started: Boolean = false
 
+    /** Tant que le simulateur tourne, il est seul à écrire la vitesse. */
+    @Volatile private var simulating: Boolean = false
+
+    private fun setRealSpeed(kmh: Float?) {
+        if (!simulating) _speedKmh.value = kmh
+    }
+
     private val locationListener = LocationListener { loc ->
         lastLocationMs = System.currentTimeMillis()
         if (loc.hasSpeed()) {
-            _speedKmh.value = (loc.speed * 3.6f).coerceAtLeast(0f)
+            setRealSpeed((loc.speed * 3.6f).coerceAtLeast(0f))
         }
     }
 
@@ -74,7 +81,14 @@ class GpsTracker(private val context: Context) {
 
     /** Permet au simulateur d'injecter une vitesse GPS factice. */
     fun setSimulatedSpeed(kmh: Float?) {
+        simulating = true
         _speedKmh.value = kmh
+    }
+
+    /** Fin du simulateur : la vitesse redevient celle du récepteur GPS. */
+    fun clearSimulatedSpeed() {
+        simulating = false
+        _speedKmh.value = null
     }
 
     @SuppressLint("MissingPermission")
@@ -89,7 +103,7 @@ class GpsTracker(private val context: Context) {
         if (!granted) {
             Log.w(TAG, "ACCESS_FINE_LOCATION non accordée — pas de tracking GPS")
             _state.value = null
-            _speedKmh.value = null
+            setRealSpeed(null)
             return
         }
         val lm = locManager ?: return
@@ -116,7 +130,7 @@ class GpsTracker(private val context: Context) {
                 override fun run() {
                     val since = System.currentTimeMillis() - lastLocationMs
                     if (lastLocationMs > 0 && since > 5000) {
-                        _speedKmh.value = null
+                        setRealSpeed(null)
                     }
                     watchdogHandler.postDelayed(this, 1000)
                 }
@@ -128,7 +142,7 @@ class GpsTracker(private val context: Context) {
         } catch (e: SecurityException) {
             Log.e(TAG, "Permission GPS refusée", e)
             _state.value = null
-            _speedKmh.value = null
+            setRealSpeed(null)
         } catch (e: Exception) {
             Log.e(TAG, "Erreur start tracker", e)
         }

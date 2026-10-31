@@ -24,6 +24,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.geoffrey.cancitroen.history.entities.RefuelEvent
 import com.geoffrey.cancitroen.history.entities.Trip
+import com.geoffrey.cancitroen.ui.components.EmptyHint
+import com.geoffrey.cancitroen.ui.components.PageTitle
+import com.geoffrey.cancitroen.ui.components.SectionTitle
+import com.geoffrey.cancitroen.ui.theme.AppIcons
 import com.geoffrey.cancitroen.ui.vm.SummaryViewModel
 import com.geoffrey.cancitroen.ui.components.GlassCard
 import com.geoffrey.cancitroen.ui.theme.Dim
@@ -51,15 +55,10 @@ fun SummaryScreen(
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text(
-            "📒 Récap",
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.SemiBold,
-            style = MaterialTheme.typography.headlineSmall,
-        )
+        PageTitle("Récapitulatif")
 
         if (trips.isEmpty() && refuels.isEmpty()) {
-            EmptyHint()
+            NoTripsHint()
             return@Column
         }
 
@@ -94,6 +93,7 @@ private data class PeriodSummary(
     val refuelCount: Int,
     val totalLiters: Double,
     val totalCost: Double,
+    val hasEstimates: Boolean,
 )
 
 private fun computePeriods(
@@ -171,6 +171,7 @@ private fun summary(
         refuelCount = periodRefuels.size,
         totalLiters = totalLitersAdded,
         totalCost = totalCost,
+        hasEstimates = periodRefuels.any { !it.userEntered },
     )
 }
 
@@ -179,13 +180,12 @@ private fun summary(
 @Composable
 private fun PeriodCard(p: PeriodSummary, modifier: Modifier = Modifier) {
     GlassCard(modifier = modifier) {
-        Column(modifier = Modifier.fillMaxWidth().padding(8.dp),
+        Column(modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                p.title.uppercase(),
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold,
-                style = MaterialTheme.typography.labelLarge,
+                p.title,
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.titleLarge,
             )
             Spacer(Modifier.height(4.dp))
             StatLine("Distance", "%.1f km".format(p.distanceKm))
@@ -197,10 +197,10 @@ private fun PeriodCard(p: PeriodSummary, modifier: Modifier = Modifier) {
                 p.avgConsL100?.let { "%.1f l/100".format(it) } ?: "—")
             StatLine("Pleins",
                 if (p.refuelCount > 0)
-                    "${p.refuelCount} (~${"%.0f".format(p.totalLiters)} L)"
+                    "${p.refuelCount} (${if (p.hasEstimates) "~" else ""}${"%.0f".format(p.totalLiters)} L)"
                 else "—")
             StatLine("Dépense",
-                if (p.totalCost > 0) "%.2f €".format(p.totalCost) else "—")
+                if (p.totalCost > 0) (if (p.hasEstimates) "~" else "") + "%.2f €".format(p.totalCost) else "—")
         }
     }
 }
@@ -227,13 +227,8 @@ private fun OdometerCard(trips: List<Trip>) {
     val totalKm = if (firstOdo != null && lastOdo != null) lastOdo - firstOdo else null
 
     GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
-            Text(
-                "🚗 Compteur",
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold,
-                style = MaterialTheme.typography.titleMedium,
-            )
+        Column(modifier = Modifier.fillMaxWidth()) {
+            SectionTitle("Compteur", AppIcons.Speed)
             Spacer(Modifier.height(8.dp))
             StatLine("Compteur actuel",
                 lastOdo?.let { "%.0f km".format(it) } ?: "—")
@@ -248,22 +243,13 @@ private fun OdometerCard(trips: List<Trip>) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun EmptyHint() {
+private fun NoTripsHint() {
     GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.fillMaxWidth().padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("📒",
-                style = MaterialTheme.typography.displaySmall)
-            Text("Pas encore de trajets enregistrés",
-                color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Active le simulateur dans Réglages pour générer des données de démo, ou attends ton premier trajet réel.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
+        EmptyHint(
+            AppIcons.Assignment,
+            "Pas encore de trajets enregistrés",
+            "Active le simulateur dans Réglages pour générer des données de démo, ou attends ton premier trajet réel.",
+        )
     }
 }
 

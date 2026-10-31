@@ -4,16 +4,21 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.geoffrey.cancitroen.App
-import com.geoffrey.cancitroen.history.UnifiedDataPoint
 import com.geoffrey.cancitroen.history.entities.RefuelEvent
 import com.geoffrey.cancitroen.history.entities.Trip
+import com.geoffrey.cancitroen.settings.FuelSettings
 import com.geoffrey.cancitroen.ui.components.TimeRange
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import com.geoffrey.cancitroen.ui.screens.stats.StatsCharts
+import com.geoffrey.cancitroen.ui.screens.stats.computeStatsCharts
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class StatsViewModel(app: Application) : AndroidViewModel(app) {
@@ -29,12 +34,17 @@ class StatsViewModel(app: Application) : AndroidViewModel(app) {
         }
     )
     val range: StateFlow<TimeRange> = _range
-    fun setRange(r: TimeRange) { _range.value = r }
+    /** Explicite : `to` vieillit dès que la page n'est plus affichée. */
+    private var followLive = true
+    fun setRange(r: TimeRange) {
+        followLive = r.isLive()
+        _range.value = r
+    }
 
-    /** Met à jour `to` à la valeur actuelle quand on est en mode live. */
+    /** Recale la fenêtre sur l'instant présent quand on suit le direct. */
     fun tickLiveRange() {
-        val r = _range.value
-        if (r.isLive()) {
+        if (followLive) {
+            val r = _range.value
             val now = System.currentTimeMillis()
             _range.value = TimeRange(now - r.durationMs, now)
         }
@@ -46,12 +56,19 @@ class StatsViewModel(app: Application) : AndroidViewModel(app) {
     fun showTripDetail(trip: Trip) { _detailedTrip.value = trip }
     fun dismissTripDetail() { _detailedTrip.value = null }
 
-    // ── Points filtrés par range (granularité auto) ──
-    val points: StateFlow<List<UnifiedDataPoint>> = _range
-        .flatMapLatest { r -> repo.pointsForRange(r.from, r.to) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    // ── Graphiques de la fenêtre (granularité auto), recalculés quand elle change ──
+    internal val charts: StateFlow<StatsCharts> = _range
+        .mapLatest { r ->
+            val points = repo.pointsForRange(r.from, r.to)
+            withContext(Dispatchers.Default) { computeStatsCharts(points, r.durationMs) }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), StatsCharts())
 
-    // ── Refuels & trips : on charge largement, on filtre côté UI ──
+    val fuelSettings: StateFlow<FuelSettings> = App.get().settings.flow
+        .map { it.fuel }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FuelSettings())
+
+    // ── Pleins ──
     val allRefuels: StateFlow<List<RefuelEvent>> = dao
         .refuelsSince(System.currentTimeMillis() - 365L * 24 * 3600 * 1000)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())

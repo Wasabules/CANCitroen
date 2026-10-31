@@ -4,28 +4,31 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.geoffrey.cancitroen.emf.EmfButton
-import com.geoffrey.cancitroen.ui.theme.Dim
-import com.geoffrey.cancitroen.ui.theme.Err
+import com.geoffrey.cancitroen.ui.components.PageTitle
+import com.geoffrey.cancitroen.ui.theme.AppIcons
 import com.geoffrey.cancitroen.ui.theme.Ok
-
-private val OnDarkButton = Color(0xFF002B30)
 
 @Composable
 fun EmfControlScreen(
@@ -46,29 +49,29 @@ fun EmfControlScreen(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column {
+                PageTitle("Écran multifonction")
                 Text(
-                    "🖥 Contrôle écran multifonction",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Text(
-                    if (active) "● ACTIF" else "OFF",
+                    if (active) "Actif" else "Désactivé",
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (active) Ok else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Button(
-                onClick = onToggle,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (active) Err else Ok,
-                    contentColor = if (active) Color.White else OnDarkButton,
-                ),
-                modifier = Modifier.height(56.dp),
-            ) {
-                Text(
-                    if (active) "⏹ Désactiver" else "▶ Activer",
-                    style = MaterialTheme.typography.titleMedium,
-                )
+            if (active) {
+                OutlinedButton(
+                    onClick = onToggle,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
+                    modifier = Modifier.height(48.dp),
+                ) {
+                    Icon(AppIcons.Stop, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Désactiver", style = MaterialTheme.typography.titleMedium)
+                }
+            } else {
+                Button(onClick = onToggle, modifier = Modifier.height(48.dp)) {
+                    Icon(AppIcons.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Activer", style = MaterialTheme.typography.titleMedium)
+                }
             }
         }
 
@@ -78,28 +81,28 @@ fun EmfControlScreen(
             modifier = Modifier.fillMaxWidth().weight(1f),
         ) {
             // Col 1 : ESC, LEFT, AIRCON
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                EmfBtn("✗ ESC", EmfButton.ESC, active, onPress, color = Err, contentColor = Color.White)
-                EmfBtn("◀", EmfButton.LEFT, active, onPress)
-                EmfBtn("❄ AIRCON", EmfButton.AIRCON, active, onPress)
+            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                EmfBtn(EmfButton.ESC, active, onPress, Modifier.weight(1f))
+                EmfBtn(EmfButton.LEFT, active, onPress, Modifier.weight(1f))
+                EmfBtn(EmfButton.AIRCON, active, onPress, Modifier.weight(1f))
             }
             // Col 2 : MENU, UP, DOWN
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                EmfBtn("☰ MENU", EmfButton.MENU, active, onPress, color = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary)
-                EmfBtn("▲", EmfButton.UP, active, onPress)
-                EmfBtn("▼", EmfButton.DOWN, active, onPress)
+            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                EmfBtn(EmfButton.MENU, active, onPress, Modifier.weight(1f))
+                EmfBtn(EmfButton.UP, active, onPress, Modifier.weight(1f))
+                EmfBtn(EmfButton.DOWN, active, onPress, Modifier.weight(1f))
             }
             // Col 3 : OK, RIGHT, DARK
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                EmfBtn("✓ OK", EmfButton.OK, active, onPress, color = Ok, contentColor = OnDarkButton)
-                EmfBtn("▶", EmfButton.RIGHT, active, onPress)
-                EmfBtn("☾ DARK", EmfButton.DARK, active, onPress)
+            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                EmfBtn(EmfButton.OK, active, onPress, Modifier.weight(1f), highlighted = true)
+                EmfBtn(EmfButton.RIGHT, active, onPress, Modifier.weight(1f))
+                EmfBtn(EmfButton.DARK, active, onPress, Modifier.weight(1f))
             }
             // Col 4 : MODE, PHONE, TRIP
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                EmfBtn("⇋ MODE", EmfButton.MODE, active, onPress)
-                EmfBtn("☎ PHONE", EmfButton.PHONE, active, onPress)
-                EmfBtn("⊙ TRIP", EmfButton.TRIP, active, onPress)
+            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                EmfBtn(EmfButton.MODE, active, onPress, Modifier.weight(1f))
+                EmfBtn(EmfButton.PHONE, active, onPress, Modifier.weight(1f))
+                EmfBtn(EmfButton.TRIP, active, onPress, Modifier.weight(1f))
             }
         }
 
@@ -110,37 +113,62 @@ fun EmfControlScreen(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(
-                lastAction?.let { "▶ ${it.name}" } ?: "— en attente —",
+                lastAction?.let { "Dernière commande : ${visualOf(it).label}" } ?: "Aucune commande envoyée",
                 modifier = Modifier.fillMaxWidth().padding(12.dp),
                 textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.primary,
-                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
             )
         }
     }
 }
 
+private class EmfVisual(val label: String, val icon: ImageVector?, val showLabel: Boolean = true)
+
+private fun visualOf(button: EmfButton): EmfVisual = when (button) {
+    EmfButton.ESC -> EmfVisual("Retour", AppIcons.Close)
+    EmfButton.MENU -> EmfVisual("Menu", AppIcons.Menu)
+    EmfButton.OK -> EmfVisual("OK", AppIcons.Check)
+    EmfButton.MODE -> EmfVisual("Mode", AppIcons.SwapHoriz)
+    EmfButton.LEFT -> EmfVisual("Gauche", AppIcons.ChevronLeft, showLabel = false)
+    EmfButton.UP -> EmfVisual("Haut", AppIcons.ExpandLess, showLabel = false)
+    EmfButton.RIGHT -> EmfVisual("Droite", AppIcons.ChevronRight, showLabel = false)
+    EmfButton.DOWN -> EmfVisual("Bas", AppIcons.ExpandMore, showLabel = false)
+    EmfButton.PHONE -> EmfVisual("Téléphone", AppIcons.Phone)
+    EmfButton.AIRCON -> EmfVisual("Climatisation", AppIcons.AcUnit)
+    EmfButton.DARK -> EmfVisual("Sombre", AppIcons.DarkMode)
+    EmfButton.TRIP -> EmfVisual("Trajet", AppIcons.Route)
+}
+
 @Composable
 private fun EmfBtn(
-    label: String,
     button: EmfButton,
     enabled: Boolean,
     onPress: (EmfButton) -> Unit,
-    color: Color? = null,
-    contentColor: Color? = null,
+    modifier: Modifier = Modifier,
+    highlighted: Boolean = false,
 ) {
-    val containerColor = color ?: MaterialTheme.colorScheme.surfaceVariant
-    val txtColor = contentColor ?: MaterialTheme.colorScheme.onSurface
+    val visual = visualOf(button)
     Button(
         onClick = { onPress(button) },
         enabled = enabled,
         colors = ButtonDefaults.buttonColors(
-            containerColor = containerColor,
-            contentColor = txtColor,
+            containerColor = if (highlighted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = if (highlighted) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
         ),
         shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth().height(64.dp),
+        modifier = modifier.fillMaxWidth(),
     ) {
-        Text(label, style = MaterialTheme.typography.titleMedium)
+        visual.icon?.let {
+            Icon(
+                it,
+                contentDescription = visual.label,
+                modifier = Modifier.size(if (visual.showLabel) 20.dp else 28.dp),
+            )
+        }
+        if (visual.showLabel) {
+            Spacer(Modifier.width(8.dp))
+            Text(visual.label, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+        }
     }
 }

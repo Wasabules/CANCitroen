@@ -50,13 +50,13 @@ decode/CanDecoder.decode(state, frame)      fonction pure → nouveau VehicleSta
 | `swc/` | commandes au volant : `SteeringWheelHandler`, `SwcDispatcher`, `SwcMapping`, `RootShell`, `RootKeyInjector`, `SwcNotificationListenerService` |
 | `emf/` | `EmfController`, `EmfButtons` (mapping `0x3E5`) |
 | `history/` | Room : `HistoryDatabase`, `dao/`, `entities/`, `VehicleHistoryRecorder`, `RollupAggregator`, `HistoryRepository` |
-| `audio/` | synthèse moteur (`EngineSoundSynth`, `LoopedSamplePlayer`, `PitchEstimator`, `WavLoader`), mode « meme » (`MemeEngineRunner`, `MemeEngineCatalog`) |
+| `audio/` | synthèse moteur (`EngineSoundCore`, `EngineSoundSynth`, `EngineProfile`), mode « meme » (`MemeEngineRunner`, `MemeEngineCatalog`) |
 | `system/` | `LauncherGuard` (launcher forcé root), `GpsTracker`, `AppShortcuts`, `PermissionsHelper` |
 | `settings/` | `AppSettings` + `AppSettingsRepository` (DataStore) |
 | `sim/` | `VehicleSimulator` (données factices) |
 | `ui/` | `screens/` (pages), `components/` (jauges, graphiques, cartes), `vm/` (ViewModels), `theme/` (couleurs, `AppIcons`) |
 
-Assets : `engines/` (échantillons WAV du son moteur), `memes/engine/` (sons du
+Assets : `memes/engine/` (sons du
 mode meme), `root/` (scripts du garde launcher, voir [launcher_root.md](launcher_root.md)).
 
 ## `App` : singletons
@@ -151,7 +151,7 @@ Base `history.db`, schéma versionné dans `android/app/schemas/`.
 | `vehicle_sample` | échantillon brut toutes les 5 s, contact mis |
 | `aggregated_sample` | agrégats (moyennes pondérées, max, dernières valeurs) par taille de bucket |
 | `trip` | trajets (début > 5 km/h, fin après 60 s à l'arrêt ou contact coupé) |
-| `refuel_event` | pleins (hausse de carburant ≥ 20 points en moins de 10 min) |
+| `refuel_event` | pleins détectés, avec le ticket saisi par l'utilisateur (voir ci-dessous) |
 
 **Rétention étagée** (`RollupAggregator`, toutes les 30 min, en transaction,
 seuils alignés sur les buckets) :
@@ -172,9 +172,100 @@ heures. Le détail d'un trajet utilise le brut, ou les buckets 1 min au-delà de
 
 Migrations : voir [développement](developpement.md#base-room--migrations).
 
+### Graphiques de la page Stats
+
+- **Données** : `StatsViewModel.charts` relit la fenêtre et calcule tous les
+  graphiques hors du thread principal (`ui/screens/stats/StatsCharts.kt`), à
+  chaque changement de fenêtre. En direct, la fenêtre avance toutes les 30 s et
+  à l'ouverture de la page ; il n'y a pas de requête à chaque insert en base
+  (toutes les 5 s). `StatsCharts` se compare par valeur : sans donnée nouvelle,
+  rien n'est recomposé.
+- **Page** : `LazyColumn`, seules les sections visibles sont composées.
+- **Dessin** (`MiniLineChart`, `MiniBarChart`, `HeatmapGrid`) : `drawWithCache`,
+  courbes et libellés préparés une fois par taille et jeu de données ; le curseur
+  ne redessine que l'infobulle et ne recompose rien. Courbes limitées à 200 points
+  (400 dans le détail d'un trajet).
+- **Gestes** (`ChartSupport.kt`) : appui maintenu 150 ms puis glissement pour le
+  curseur. Un geste immédiat n'est pas consommé : il fait défiler la page ou
+  change de page.
+
+### Pleins et ticket
+
+**Détection** (`history/RefuelDetector`, fonction pure) : hausse d'au moins
+12 points de jauge par rapport au dernier niveau connu, sans nouveau maximum
+pendant 60 s. Il n'y a pas de limite de durée : le niveau de référence est relu
+en base au démarrage, donc un plein fait contact coupé est vu même si l'app a
+été tuée pendant la veille. Une jauge qui monte par paliers ne donne qu'un
+plein ; 0 et 0xFF (BSI au réveil) sont ignorés ; une baisse n'est retenue
+qu'après deux mesures de suite. Le seuil de 12 points n'a pas été mesuré sur la
+voiture : à ajuster si le ballottement crée de faux pleins.
+
+**Ticket** (`ui/components/RefuelPrompt.kt`, `ui/vm/RefuelViewModel`) : le plein
+est enregistré avec une estimation (`awaitingInput = 1`), puis la quantité et le
+montant sont demandés. La saisie apparaît après 10 s à l'arrêt, disparaît dès
+3 km/h et revient au prochain arrêt, valeurs conservées. C'est une surcouche
+dans l'arbre Compose avec son propre pavé numérique : ni fenêtre ni clavier
+système, pour rester en mode immersif. « Plus tard » ne repose plus la question
+avant le prochain démarrage de l'app ; toucher un plein dans Stats permet de
+saisir ou de corriger son ticket.
+
+Le bouton « + Ajouter » de Stats saisit un plein non détecté (appoint de moins de
+12 points). Sa jauge avant est déduite des litres, donc il ne compte pas dans le
+calcul de capacité (`manual`). Si le détecteur voit ce même plein dans les 2 h,
+il complète la saisie avec la jauge mesurée au lieu de créer un doublon.
+
+**Calibration** (`history/FuelCalibration`, fonctions pures) :
+
+- le prix au litre du réglage suit le **dernier** ticket (corriger un ancien
+  ticket ne le change pas) ;
+- la capacité du réservoir est la médiane de `litres / Δjauge × 100` sur les
+  10 derniers tickets exploitables, à partir de 3 : hausse d'au moins 20 points
+  et jauge sous 99 % à l'arrivée, car une jauge saturée à 100 % fausse le calcul.
+  Elle est proposée dans Réglages et ne s'applique que d'un geste (« Appliquer ») ;
+- la conso réelle entre deux pleins vient du ticket si les deux finissent au même
+  niveau (à 2 points près), sinon de la baisse de jauge, car un appoint ne remplace
+  pas ce qui a été brûlé. Elle dépend de l'odomètre, dont le facteur n'est pas
+  validé ([points ouverts](../can/signaux_decodes.md#points-ouverts)) ;
+- la correction de conso est la médiane de `réelle / indiquée` sur les trajets
+  enregistrés entre deux pleins, à partir de 3 mesures couvrant au moins 70 % de la
+  distance. Appliquée d'un geste, elle agit sur `uiState` (affichage en direct) et
+  sur le coût des trajets. L'historique garde la valeur de la voiture, sinon la
+  comparaison se corrigerait elle-même ;
+- le coût d'un trajet est `conso × distance × correction × prix du dernier ticket
+  connu à cette date` (à défaut, le prix réglé).
+
+### Sauvegarde et export
+
+- **Avant migration** (`history/HistoryBackup`) : copie dans
+  `databases/backup/history-v<N>-<ms>.db` (2 copies gardées) dès que la version de
+  la base diffère de celle attendue, destructif compris. La copie se fait à la
+  première ouverture de la base, hors du thread principal.
+- **Export** (Réglages → Capteurs et carburant → Données, `history/DataExport`) : CSV des
+  pleins et des trajets (`;` et virgule décimale) et copie complète de la base dans
+  `Téléchargements/CANCitroen`. Ces fichiers survivent à une désinstallation.
+
+### Simulateur et historique
+
+Le simulateur n'écrit pas dans l'historique, sauf si le réglage Dev « Enregistrer
+le simulateur dans l'historique » est activé (pour tester Stats et les pleins sans
+voiture). Sans ça, ses valeurs faussent le prix, la capacité et les trajets, et
+son arrêt peut déclencher un faux plein.
+
+### Alertes
+
+`decode/VehicleAlerts` + `ui/components/VehicleAlertBanner` : bandeau sur toutes les
+pages de l'app (pas par-dessus une autre app), après 3 s de confirmation, fermable.
+Pression d'huile (moteur tournant), T° d'eau ≥ 118 °C, niveaux d'eau et d'huile.
+Les bits d'alerte de `0x168` viennent de la documentation et la pente de T° d'eau
+n'a qu'un point de mesure : à vérifier sur la voiture.
+
 ## UI
 
 `MainActivity` : un `HorizontalPager` de 7 pages, ouverture sur l'accueil.
+
+Style commun : pas d'émoji, icônes monochromes `ui/theme/AppIcons`, titres
+`PageTitle`/`SectionTitle` (texte neutre, accent sur l'icône), états vides
+`EmptyHint`, cartes `GlassCard`/`SectionCard` (arrondi `CardCorner`).
 
 | Page | Écran | Contenu |
 |---|---|---|
@@ -216,18 +307,78 @@ T° ext), `engineSound`, `theme` (couleur d'accent), `shortcutOverrides`
 
 ## Son moteur
 
-`EngineSoundSynth` mélange trois échantillons (ralenti / milieu / haut) selon
-le RPM, ou génère un son procédural. `MemeEngineRunner` joue un son court à
-une cadence liée au régime. Moteur arrêté (RPM < 100) ou volume nul depuis
-1 s : l'`AudioTrack` est mise en pause, pour laisser la sortie audio se mettre
-en veille.
+`EngineSoundCore` (Kotlin pur, testé en JVM) simule le trajet du gaz, car un vrai
+moteur n'a rien de périodique. Chaque cylindre garde sa pression, différente à
+chaque cycle, qui se vide à l'ouverture de sa soupape (durée fixée par la course),
+remonte son collecteur (longueur selon l'architecture), rejoint le tube (une part de
+l'onde revient), puis le silencieux, dont les chambres la dispersent. S'y ajoutent
+les turbulences, l'admission, un grondement sans rythme, le souffle mécanique, les
+claquements de soupapes et l'écho de l'habitacle. Un niveau automatique très lent
+harmonise toutes les configurations sans gommer les accélérations. La charge se
+déduit de la montée du régime, seule donnée disponible sur le bus. Tout évolue
+échantillon par échantillon : le résultat ne dépend pas de la taille des blocs. Le
+limiteur agit sur le gain et ne déforme pas le signal.
+
+Le lever de pied a ses propres événements. L'injection se coupe (pression d'échappement
+réduite) ; du carburant imbrûlé peut détoner dans le tube (`PopLevel`, surtout juste
+après le lever de pied, jamais au ralenti, sous charge ni sur un diesel). Une détonation
+est une onde qui fait résonner le tube selon sa longueur et la cylindrée, avec une force,
+une brillance et une durée propres à l'échappement (`ExhaustType`) ; un premier essai en
+claquements de bruit blanc sonnait comme « un caillou sur le fond de caisse » ; le turbo a une pression qui
+monte avec retard et une turbine qui garde son élan, un sifflement de wastegate à
+pleine pression et une décharge au choix (`TurboRelease`). Ces bruits passent par un
+bus à part, non affecté par le niveau automatique. Limite : sur la voiture, le lever de
+pied se déduit de la baisse du régime ; en 5e, très progressive, il peut passer inaperçu.
+
+Modèles écartés à l'oreille : impulsions dans un tube résonant (« un pet dans une
+canette »), puis somme de raies pures (« un moustique », trop périodique et trop
+propre).
+
+Le réglage est calé sur six enregistrements de Wikimedia Commons (DS3, CR-X, Kia
+Ceed, Audi 100, Abarth 500, BMW E46, série « engine and exhaust sound », CC BY 3.0),
+utilisés pour la mesure seule et non inclus au dépôt. Moyennes sur les fenêtres les
+plus fortes, en dB par octave :
+
+| | 63 Hz | 125 | 250 | 500 | 1 k | 2 k | 4 k | 8 k | Tonal > 500 Hz | Platitude |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Réel | −9 | −7 | −15 | −16 | −17 | −23 | −30 | −39 | 0,27 | 0,24 |
+| Modèle à raies | −27 | −12 | −7 | −7 | −12 | −21 | −35 | −52 | 0,51 | 0,11 |
+| Simulation actuelle | −9 | −4 | −10 | −15 | −19 | −23 | −29 | −33 | 0,33 | 0,33 |
+
+Ces mesures disent si le spectre est juste, pas si le son plaît : seule l'écoute
+tranche. `doesNotWhineLikeAMosquito` et `keepsItsCrispInTheHighs` protègent ces cibles.
+
+`EngineConfig` décrit le moteur tel qu'on le construirait (cylindres, architecture,
+cylindrée, alésage, régime maximal, échappement, turbo, carburant) et produit un
+`EngineProfile`. Les profils de `EngineProfiles` sont des préréglages ; les modifier
+dans `EngineBuilderCard` crée « Mon moteur », enregistré dans les réglages. Le régime
+de la voiture passe par un multiplicateur réglable (`EngineProfile.fromCarRpm`) :
+au-dessus du ralenti le régime est multiplié, puis la courbe se couche à l'approche
+du régime maximal, sans butée ni cassure.
+
+`EngineSoundSynth` joue ce signal sur un thread dédié en priorité audio, au taux
+natif de la sortie, et journalise tout vidage de piste (`logcat -s EngineSoundSynth`),
+qui s'entendrait comme un grésillement. Moteur arrêté (RPM < 100) ou volume nul
+depuis 1 s : l'`AudioTrack` est mise en pause, pour laisser la sortie audio se
+mettre en veille.
+
+`MemeEngineRunner` joue un son court à une cadence liée au régime.
+
+Pour écouter sans voiture ni émulateur (tour de simulateur et régimes stables,
+un fichier par profil) :
+
+```bash
+cd android
+ENGINE_SOUND_RENDER_DIR=/tmp/son ./gradlew :app:testDebugUnitTest --tests '*EngineSoundRender' --rerun-tasks
+```
 
 ## Simulateur
 
-Réglages → Dev → « Mode simulateur » : `VehicleSimulator` écrit un cycle de
-conduite de 2 min dans `_vehicleState` (mise à jour toutes les 500 ms). Sert
-à développer l'UI et l'historique sans voiture. Attention : 2 Hz, loin des
-20-50 Hz du vrai bus.
+`sim/VehicleSimulator` publie un `VehicleState` toutes les 50 ms, au rythme du
+régime sur le vrai bus. `sim/DrivingModel` conduit : pédale, embrayage, cinq
+rapports et une boucle de 120 s (ville, feu, voie rapide, dépassement, arrêt).
+Régime et vitesse découlent de la physique, ils ne sont jamais imposés. Activé
+par le réglage Développeur « Mode simulateur ».
 
 ## Démarrage à froid (Atoto)
 

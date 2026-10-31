@@ -10,8 +10,8 @@ enum class SwcButton(val displayName: String, val match: (Int) -> Boolean) {
     VOL_UP   ("Volume +",       { (it and 0x0C) == 0x08 }),
     VOL_DOWN ("Volume −",       { (it and 0x0C) == 0x04 }),
     MUTE     ("Mute (VOL+ et VOL− simultanés)", { (it and 0x0C) == 0x0C }),
-    NEXT     ("Suivant ▶",      { (it and 0x80) != 0 }),
-    PREV     ("◀ Précédent",    { (it and 0x40) != 0 }),
+    NEXT     ("Suivant",      { (it and 0x80) != 0 }),
+    PREV     ("Précédent",    { (it and 0x40) != 0 }),
     SOURCE   ("Source / Mode",  { (it and 0x02) != 0 }),
 }
 
@@ -38,22 +38,22 @@ enum class SwcAction(val label: String) {
     MEDIA_NEXT        ("Piste suivante"),
     MEDIA_PREV        ("Piste précédente"),
     MEDIA_STOP        ("Stop"),
-    MEDIA_REWIND      ("Rembobiner ⏪"),
-    MEDIA_FAST_FORWARD("Avance rapide ⏩"),
+    MEDIA_REWIND      ("Retour rapide"),
+    MEDIA_FAST_FORWARD("Avance rapide"),
     HEADSET_HOOK      ("Hook casque (= play/pause hardware)"),
     // ── Voix + téléphonie ──
     VOICE_ASSIST      ("Assistant vocal (Google)"),
-    CALL_ANSWER       ("📞 Décrocher l'appel"),
-    CALL_END          ("📵 Raccrocher"),
+    CALL_ANSWER       ("Décrocher"),
+    CALL_END          ("Raccrocher"),
     // ── Navigation système (Atoto) ──
-    NAV_HOME          ("🏠 Home (retour launcher)"),
-    NAV_BACK          ("← Back"),
-    NAV_MENU          ("☰ Menu"),
-    DPAD_UP           ("▲ Haut"),
-    DPAD_DOWN         ("▼ Bas"),
-    DPAD_LEFT         ("◀ Gauche"),
-    DPAD_RIGHT        ("▶ Droite"),
-    DPAD_CENTER       ("● OK"),
+    NAV_HOME          ("Accueil"),
+    NAV_BACK          ("Retour"),
+    NAV_MENU          ("Menu"),
+    DPAD_UP           ("Haut"),
+    DPAD_DOWN         ("Bas"),
+    DPAD_LEFT         ("Gauche"),
+    DPAD_RIGHT        ("Droite"),
+    DPAD_CENTER       ("OK"),
 }
 
 /**
@@ -68,55 +68,55 @@ enum class SwcAction(val label: String) {
  */
 enum class SwcEndpoint(val label: String, val description: String) {
     AUTO(
-        "🎯 Automatique (recommandé)",
+        "Automatique (recommandé)",
         "L'app choisit le canal le plus universel selon l'action."
     ),
     COMBO_UNIVERSAL(
-        "💪 Combo universel (fanout)",
+        "Combo universel",
         "Tente plusieurs canaux à la fois (Audio + MediaSession + SYU). Plus fiable mais risque de double-déclenchement sur certaines apps."
     ),
     AUDIO_ADJUST(
-        "🔊 AudioManager.adjustVolume",
+        "AudioManager.adjustVolume",
         "Volume context-aware : choisit le stream actif (Android Auto inclus)."
     ),
     AUDIO_ADJUST_SUGGESTED(
-        "🎚 adjustSuggestedStreamVolume",
+        "adjustSuggestedStreamVolume",
         "Équivalent strict des boutons hardware (rocker). Le plus universel pour le volume."
     ),
     AUDIO_STREAM_MUSIC(
-        "🎵 Stream MUSIC",
+        "Flux musique (STREAM_MUSIC)",
         "Force adjustStreamVolume(STREAM_MUSIC). Volume uniquement."
     ),
     DISPATCH_KEY(
-        "📡 dispatchMediaKeyEvent",
+        "dispatchMediaKeyEvent",
         "Universel : Spotify, Android Auto, lecteur Atoto via AudioManager."
     ),
     MEDIA_SESSION(
-        "🎼 MediaSession active",
+        "Session média active",
         "Cible la session média en cours via getActiveSessions (Android Auto OK). Nécessite « Accès aux notifications »."
     ),
     MEDIA_SESSION_VOLUME(
-        "🎼+🔊 Volume via MediaSession",
+        "Volume par la session média",
         "Volume sur la session média active (le seul moyen pour Android Auto). Nécessite « Accès aux notifications »."
     ),
     MEDIA_BROADCAST(
-        "📻 Intent ACTION_MEDIA_BUTTON",
+        "Intent ACTION_MEDIA_BUTTON",
         "Broadcast système ordered. Nécessaire pour certaines apps anciennes."
     ),
     SYU_MUSIC(
-        "🎶 Atoto · Musique (com.syu.music)",
+        "Atoto · Musique (com.syu.music)",
         "Service propriétaire firmware Atoto. Ne touche pas Android Auto."
     ),
     SYU_BT(
-        "📞 Atoto · Bluetooth (com.syu.bt)",
+        "Atoto · Bluetooth (com.syu.bt)",
         "Service du player BT-A2DP firmware Atoto."
     ),
     SYU_RADIO(
-        "📡 Atoto · Radio (com.syu.radio)",
+        "Atoto · Radio (com.syu.radio)",
         "Service du tuner radio firmware Atoto."
     ),
     ROOT_SHELL(
-        "🔓 Root shell (input keyevent)",
+        "Shell root (input keyevent)",
         "Injecte la touche via `su -c input keyevent N`. Bypasse Android Auto et toute app qui consomme la touche. ~200 ms de latence — déconseillé pour vol±/-/répétitions rapides. Requiert ROOT (Magisk OK)."
     ),
 }

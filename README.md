@@ -82,9 +82,6 @@ Code et documentation sous **licence MIT** ([LICENSE](LICENSE)), © 2026 Wasabul
 
 Éléments tiers :
 
-- sons moteur `android/app/src/main/assets/engines/*.wav` : *Racing Car Engine
-  Sound Loops* par domasx2 ([OpenGameArt](https://opengameart.org/content/racing-car-engine-sound-loops)),
-  **CC0** ;
 - tracés d'icônes `ui/theme/AppIcons.kt` : [Material Icons](https://github.com/google/material-design-icons)
   (Google), **Apache License 2.0** ;
 - sons du « mode meme » : **non inclus** (droits inconnus), à télécharger soi-même

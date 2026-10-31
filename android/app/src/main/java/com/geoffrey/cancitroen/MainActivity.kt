@@ -348,6 +348,12 @@ class MainActivity : ComponentActivity() {
             )
         }
 
+        // ── Ticket du dernier plein : demandé à l'arrêt, masqué en roulant ──
+        com.geoffrey.cancitroen.ui.components.RefuelPromptHost(speedKmh = { state.speed })
+
+        // ── Alertes graves, visibles depuis toutes les pages ──
+        com.geoffrey.cancitroen.ui.components.VehicleAlertBanner(state = { state })
+
         // ── Picker d'apps (long-press sur shortcut) ──
         val slot = pickerSlot
         if (slot != null) {
@@ -397,7 +403,11 @@ class MainActivity : ComponentActivity() {
         val dotH = if (compact) 6.dp else 8.dp
 
         Row(
-            modifier = modifier.graphicsLayerAlpha(containerAlpha),
+            // Fond sombre : les pages défilent sous les points.
+            modifier = modifier
+                .graphicsLayerAlpha(containerAlpha)
+                .background(Color(0xB3000000), RoundedCornerShape(12.dp))
+                .padding(horizontal = 10.dp, vertical = 5.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

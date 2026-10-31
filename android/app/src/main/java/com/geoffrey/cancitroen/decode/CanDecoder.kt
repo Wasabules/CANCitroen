@@ -262,8 +262,8 @@ object CanDecoder {
             (b0 and 0x04) != 0 -> btns += "VOL-"
         }
         if ((b0 and 0x02) != 0) btns += "SRC"
-        if ((b0 and 0x40) != 0) btns += "◀ PREV"
-        if ((b0 and 0x80) != 0) btns += "NEXT ▶"
+        if ((b0 and 0x40) != 0) btns += "PREV"
+        if ((b0 and 0x80) != 0) btns += "NEXT"
         return btns.joinToString(" ")
     }
 

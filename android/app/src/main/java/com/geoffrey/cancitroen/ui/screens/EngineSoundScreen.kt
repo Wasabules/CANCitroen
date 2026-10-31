@@ -20,7 +20,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
@@ -43,7 +45,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.geoffrey.cancitroen.audio.EngineProfile
 import com.geoffrey.cancitroen.audio.EngineProfiles
 import com.geoffrey.cancitroen.audio.MemeEngine
+import com.geoffrey.cancitroen.ui.components.CardCorner
+import com.geoffrey.cancitroen.ui.components.DropdownPicker
 import com.geoffrey.cancitroen.ui.components.GlassCard
+import com.geoffrey.cancitroen.ui.components.PageTitle
+import com.geoffrey.cancitroen.ui.components.SectionTitle
+import com.geoffrey.cancitroen.ui.theme.AppIcons
 import com.geoffrey.cancitroen.ui.theme.Dim
 import com.geoffrey.cancitroen.ui.theme.Ok
 import com.geoffrey.cancitroen.ui.theme.Text as TextColor
@@ -57,7 +64,7 @@ fun EngineSoundScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     val demoRunning by vm.demoRunning.collectAsStateWithLifecycle()
     val demoRpm by vm.demoRpm.collectAsStateWithLifecycle()
-    val profile = EngineProfiles.byId(state.profileId)
+    val profile = EngineProfiles.resolve(state.profileId, state.custom)
 
     Column(
         modifier = modifier
@@ -66,14 +73,9 @@ fun EngineSoundScreen(
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        PageTitle("Son moteur")
         Text(
-            "🔊 Simulateur de bruit moteur",
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.SemiBold,
-            style = MaterialTheme.typography.headlineSmall,
-        )
-        Text(
-            "Génère un son moteur synthétique modulé par les RPM en temps réel. " +
+            "Génère un son moteur synthétique suivant le régime en temps réel. " +
                 "Sortie via les haut-parleurs de l'Atoto, mixée avec ta musique.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium,
@@ -82,30 +84,25 @@ fun EngineSoundScreen(
         // ── Toggle ON/OFF géant ──
         GlassCard(modifier = Modifier.fillMaxWidth()) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        if (state.enabled) "● ACTIF" else "OFF",
-                        color = if (state.enabled) Ok else MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.SemiBold,
+                        "Activer le son",
+                        color = MaterialTheme.colorScheme.onSurface,
                         style = MaterialTheme.typography.titleLarge,
                     )
                     Text(
-                        "Tap pour ${if (state.enabled) "désactiver" else "activer"}",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        if (state.enabled) "Actif" else "Désactivé",
+                        color = if (state.enabled) Ok else MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
                 Switch(
                     checked = state.enabled,
                     onCheckedChange = vm::setEnabled,
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Ok,
-                        checkedTrackColor = Ok.copy(alpha = 0.4f),
-                    ),
                 )
             }
         }
@@ -114,7 +111,7 @@ fun EngineSoundScreen(
         var dragVolume by remember { mutableStateOf<Float?>(null) }
         val shownVolume = dragVolume ?: state.volume
         GlassCard(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 Row(modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically) {
@@ -142,51 +139,25 @@ fun EngineSoundScreen(
             }
         }
 
-        // ── Sélection du profil moteur ──
-        Text(
-            "Choisir une motorisation",
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.SemiBold,
-            style = MaterialTheme.typography.titleMedium,
-        )
-        EngineProfiles.ALL.forEach { p ->
-            ProfileCard(
-                profile = p,
-                selected = p.id == state.profileId && state.memeEngineId == null,
+        // ── Choix du moteur ──
+        val choices = remember(state.custom) {
+            EngineProfiles.ALL + EngineProfiles.resolve(EngineProfiles.CUSTOM_ID, state.custom)
+        }
+        GlassCard(modifier = Modifier.fillMaxWidth()) {
+            DropdownPicker(
+                label = "Moteur",
+                currentLabel = profile.name,
+                sublabel = profile.description,
+                options = choices,
+                optionLabel = { it.name },
+                optionSublabel = { it.description },
+                isSelected = { it.id == state.profileId },
                 onSelect = {
-                    vm.setProfile(p.id)
+                    vm.setProfile(it.id)
                     vm.setMemeEngine(null)
                 },
             )
         }
-
-        // ── Mode meme (déclenchement par cycle de combustion) ──
-        if (vm.availableMemes.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "🤡 Mode meme — son par cycle de combustion",
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold,
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                "Au lieu d'un son moteur, joue un meme à chaque explosion. " +
-                    "Cap à 30 trig/sec pour rester audible.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Spacer(Modifier.height(8.dp))
-            vm.availableMemes.forEach { m ->
-                MemeEngineCard(
-                    meme = m,
-                    selected = state.memeEngineId == m.id,
-                    onSelect = { vm.setMemeEngine(m.id) },
-                )
-            }
-        }
-
-        // ── Détail du profil sélectionné ──
-        ProfileDetailCard(profile)
 
         // ── Bouton démo ──
         DemoTestCard(
@@ -194,8 +165,32 @@ fun EngineSoundScreen(
             currentRpm = demoRpm,
             profile = profile,
             onStart = vm::runDemo,
+            onBlips = vm::runRevBlips,
             onStop = vm::stopDemo,
         )
+
+        // ── Configurateur : part du moteur choisi, le modifier crée « Mon moteur » ──
+        EngineBuilderCard(
+            config = profile.config ?: state.custom,
+            isCustom = state.profileId == EngineProfiles.CUSTOM_ID,
+            onChange = vm::setCustomEngine,
+        )
+
+        // ── Mode meme (déclenchement par cycle de combustion) ──
+        if (vm.availableMemes.isNotEmpty()) {
+            val memes = remember { listOf<MemeEngine?>(null) + vm.availableMemes }
+            val currentMeme = vm.availableMemes.firstOrNull { it.id == state.memeEngineId }
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                DropdownPicker(
+                    label = "Mode meme : un son à chaque explosion, 30 par seconde au plus",
+                    currentLabel = currentMeme?.label ?: "Désactivé",
+                    options = memes,
+                    optionLabel = { it?.label ?: "Désactivé" },
+                    isSelected = { it?.id == state.memeEngineId },
+                    onSelect = { vm.setMemeEngine(it?.id) },
+                )
+            }
+        }
 
         Spacer(Modifier.height(40.dp))
     }
@@ -207,17 +202,15 @@ private fun DemoTestCard(
     currentRpm: Float,
     profile: EngineProfile,
     onStart: () -> Unit,
+    onBlips: () -> Unit,
     onStop: () -> Unit,
 ) {
     GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
-            Text("🎧 Tester le son",
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold,
-                style = MaterialTheme.typography.titleMedium)
+        Column(modifier = Modifier.fillMaxWidth()) {
+            SectionTitle("Tester le son", AppIcons.Headphones)
             Text(
-                "Balaye les RPM ${profile.idleRpm.toInt()} → ${profile.redlineRpm.toInt()} → ${profile.idleRpm.toInt()} sur 12 s. " +
-                    "Override le RPM véhicule pendant la démo.",
+                "Balaye le régime de ${profile.idleRpm.toInt()} → ${profile.redlineRpm.toInt()} → ${profile.idleRpm.toInt()} sur 12 s. " +
+                    "Remplace le régime réel pendant la démo.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -231,164 +224,40 @@ private fun DemoTestCard(
                         modifier = Modifier.size(10.dp).clip(CircleShape).background(Ok),
                     )
                     Text(
-                        "Démo en cours · ${currentRpm.toInt()} RPM",
+                        "Démo en cours · ${currentRpm.toInt()} tr/min",
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.SemiBold,
                         style = MaterialTheme.typography.titleMedium,
                     )
                 }
                 Spacer(Modifier.height(8.dp))
-                Button(
+                OutlinedButton(
                     onClick = onStop,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFEF5350),
-                        contentColor = Color.White,
-                    ),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
                     modifier = Modifier.fillMaxWidth().height(48.dp),
-                ) { Text("⏹ Arrêter la démo") }
+                ) {
+                    Icon(AppIcons.Stop, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Arrêter la démo")
+                }
             } else {
                 Button(
                     onClick = onStart,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = profile.accent,
-                        contentColor = Color.Black,
-                    ),
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                 ) {
-                    Text("▶ Lancer la démo (12 s)",
-                        fontWeight = FontWeight.SemiBold)
+                    Icon(AppIcons.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Lancer la démo (12 s)", fontWeight = FontWeight.SemiBold)
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ProfileCard(
-    profile: EngineProfile,
-    selected: Boolean,
-    onSelect: () -> Unit,
-) {
-    val border = if (selected) profile.accent else Color.Transparent
-    val bg = if (selected) profile.accent.copy(alpha = 0.12f) else Color.Transparent
-    GlassCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(2.dp, border, RoundedCornerShape(20.dp)),
-        onClick = onSelect,
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(8.dp).background(bg),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(50.dp)
-                    .clip(CircleShape)
-                    .background(profile.accent.copy(alpha = 0.20f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(profile.emoji, fontSize = 26.sp)
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(profile.name, color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.SemiBold,
-                    style = MaterialTheme.typography.titleMedium)
-                Text(profile.description, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall)
-            }
-            if (selected) {
-                Box(
-                    modifier = Modifier.size(20.dp).clip(CircleShape).background(profile.accent),
-                    contentAlignment = Alignment.Center,
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = onBlips,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
                 ) {
-                    Text("✓", color = Color.Black, fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp)
+                    Text("Coups de gaz (12 s)", fontWeight = FontWeight.SemiBold)
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun MemeEngineCard(
-    meme: MemeEngine,
-    selected: Boolean,
-    onSelect: () -> Unit,
-) {
-    val accent = Color(0xFFFFB74D)
-    val border = if (selected) accent else Color.Transparent
-    val bg = if (selected) accent.copy(alpha = 0.12f) else Color.Transparent
-    GlassCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(2.dp, border, RoundedCornerShape(20.dp)),
-        onClick = onSelect,
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(8.dp).background(bg),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(50.dp)
-                    .clip(CircleShape)
-                    .background(accent.copy(alpha = 0.20f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(meme.emoji, fontSize = 26.sp)
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(meme.label, color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.SemiBold,
-                    style = MaterialTheme.typography.titleMedium)
-                Text(meme.assetPath, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall)
-            }
-            if (selected) {
-                Box(
-                    modifier = Modifier.size(20.dp).clip(CircleShape).background(accent),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("✓", color = Color.Black, fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ProfileDetailCard(profile: EngineProfile) {
-    GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
-            Text("ℹ️ Caractéristiques",
-                color = profile.accent,
-                fontWeight = FontWeight.SemiBold,
-                style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(8.dp))
-            DetailRow("Cylindres", "${profile.cylinders}")
-            DetailRow("Plage RPM", "${profile.idleRpm.toInt()} – ${profile.redlineRpm.toInt()}")
-            DetailRow("Forme d'onde",
-                "${(profile.sawtoothMix * 100).toInt()}% sawtooth · " +
-                    "${((1 - profile.sawtoothMix) * 100).toInt()}% sinus")
-            DetailRow("Bruit", "${(profile.noiseLevel * 100).toInt()} %")
-            DetailRow("Coupure passe-bas",
-                "${profile.lowpassIdleHz.toInt()} → ${profile.lowpassRedlineHz.toInt()} Hz")
-            if (profile.crossplane) {
-                DetailRow("Cross-plane", "Oui (irrégulier)")
-            }
-        }
-    }
-}
-
-@Composable
-private fun DetailRow(label: String, value: String) {
-    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-        horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-        Text(value, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyMedium)
     }
 }

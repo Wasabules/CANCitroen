@@ -49,6 +49,7 @@ import kotlinx.coroutines.withContext
 @Composable
 fun TripDetailSheet(
     trip: Trip,
+    cost: Double?,
     onDismiss: () -> Unit,
 ) {
     // Chargé une fois, hors du main thread (null = en cours).
@@ -74,8 +75,8 @@ fun TripDetailSheet(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(
-                "🚗 Détail trajet",
-                color = MaterialTheme.colorScheme.primary,
+                "Détail du trajet",
+                color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.SemiBold,
                 style = MaterialTheme.typography.titleLarge,
             )
@@ -92,6 +93,7 @@ fun TripDetailSheet(
                 StatRow("Vitesse moy", trip.avgSpeedKmh?.let { "%.0f km/h".format(it) } ?: "—")
                 StatRow("Vitesse max", trip.maxSpeedKmh?.let { "%.0f km/h".format(it) } ?: "—")
                 StatRow("Conso moy", trip.avgConsL100?.let { "%.1f l/100".format(it) } ?: "—")
+                StatRow("Coût estimé", cost?.let { "≈ %.2f €".format(it) } ?: "—")
                 StatRow("Carburant",
                     if (trip.startFuelPct != null && trip.endFuelPct != null)
                         "${trip.startFuelPct}% → ${trip.endFuelPct}%"
@@ -173,6 +175,9 @@ private class TripCurves(
     val coolant: List<Pair<Double, Double>>,
 )
 
+/** Plus que l'écran n'en distingue ne servirait qu'à ralentir le tracé (un trajet de 6 h = 4 320 samples). */
+private const val TRIP_CURVE_POINTS = 400
+
 /**
  * Samples bruts du trajet s'ils existent encore (gardés 6 h par
  * [RollupAggregator]), sinon agrégats 1 min sur la plage du trajet (7 j).
@@ -183,10 +188,10 @@ private suspend fun loadTripCurves(dao: HistoryDao, trip: Trip): TripCurves {
         val t0 = raw.first().ts
         fun m(ts: Long) = (ts - t0) / 60_000.0
         return TripCurves(
-            speed = raw.mapNotNull { s -> s.speedKmh?.let { m(s.ts) to it.toDouble() } },
-            rpmDiv100 = raw.mapNotNull { s -> s.rpm?.let { m(s.ts) to it / 100.0 } },
-            cons = raw.mapNotNull { s -> s.fuelInstL100?.let { m(s.ts) to it.toDouble() } },
-            coolant = raw.mapNotNull { s -> s.tCoolant?.let { m(s.ts) to it.toDouble() } },
+            speed = aggregateMean(raw.mapNotNull { s -> s.speedKmh?.let { m(s.ts) to it.toDouble() } }, TRIP_CURVE_POINTS),
+            rpmDiv100 = aggregateMean(raw.mapNotNull { s -> s.rpm?.let { m(s.ts) to it / 100.0 } }, TRIP_CURVE_POINTS),
+            cons = aggregateMean(raw.mapNotNull { s -> s.fuelInstL100?.let { m(s.ts) to it.toDouble() } }, TRIP_CURVE_POINTS),
+            coolant = aggregateMean(raw.mapNotNull { s -> s.tCoolant?.let { m(s.ts) to it.toDouble() } }, TRIP_CURVE_POINTS),
         )
     }
     val end = trip.endTs ?: System.currentTimeMillis()
@@ -195,10 +200,10 @@ private suspend fun loadTripCurves(dao: HistoryDao, trip: Trip): TripCurves {
     // Bucket = début de minute : peut précéder le départ de quelques secondes.
     fun m(ts: Long) = maxOf(0.0, (ts - trip.startTs) / 60_000.0)
     return TripCurves(
-        speed = agg.mapNotNull { a -> a.speedAvg?.let { m(a.ts) to it.toDouble() } },
-        rpmDiv100 = agg.mapNotNull { a -> a.rpmAvg?.let { m(a.ts) to it / 100.0 } },
-        cons = agg.mapNotNull { a -> a.fuelInstAvg?.let { m(a.ts) to it.toDouble() } },
-        coolant = agg.mapNotNull { a -> a.tCoolantAvg?.let { m(a.ts) to it.toDouble() } },
+        speed = aggregateMean(agg.mapNotNull { a -> a.speedAvg?.let { m(a.ts) to it.toDouble() } }, TRIP_CURVE_POINTS),
+        rpmDiv100 = aggregateMean(agg.mapNotNull { a -> a.rpmAvg?.let { m(a.ts) to it / 100.0 } }, TRIP_CURVE_POINTS),
+        cons = aggregateMean(agg.mapNotNull { a -> a.fuelInstAvg?.let { m(a.ts) to it.toDouble() } }, TRIP_CURVE_POINTS),
+        coolant = aggregateMean(agg.mapNotNull { a -> a.tCoolantAvg?.let { m(a.ts) to it.toDouble() } }, TRIP_CURVE_POINTS),
     )
 }
 

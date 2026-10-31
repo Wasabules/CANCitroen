@@ -65,7 +65,7 @@ internal fun ActiveTripCard(trip: Trip) {
     val avgCons = aggregates?.avgConsL100
 
     GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier.size(10.dp).clip(CircleShape).background(Color(0xFF66BB6A))
@@ -102,6 +102,8 @@ internal fun ActiveTripCard(trip: Trip) {
                     color = MaterialTheme.colorScheme.primary,
                     height = 100.dp,
                     yMin = 0.0,
+                    xAxisFormatter = { "%.0f s".format(it) },
+                    tooltipFormatter = { (x, y) -> "%.0f s  ·  %.0f km/h".format(x, y) },
                 )
             }
         }

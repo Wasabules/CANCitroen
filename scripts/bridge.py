@@ -37,8 +37,15 @@ import time
 from pathlib import Path
 from typing import Optional
 
-import can
 from aiohttp import web, WSMsgType
+
+# Pas requis pour les décodeurs ni leurs tests : un python-can absent ou cassé
+# (ImportError, mais aussi AttributeError selon typing_extensions) n'y change rien.
+try:
+    import can
+except Exception as e:  # noqa: BLE001
+    can = None
+    CAN_IMPORT_ERROR = e
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _canlog import iter_frames  # noqa: E402
@@ -799,6 +806,8 @@ def main():
     ap.add_argument("--replay", help="rejouer une capture .log au lieu d'écouter le bus")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
+    if can is None:
+        ap.error(f"python-can indisponible : {CAN_IMPORT_ERROR}")
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,

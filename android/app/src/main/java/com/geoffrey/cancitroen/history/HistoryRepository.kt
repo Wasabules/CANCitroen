@@ -3,11 +3,8 @@ package com.geoffrey.cancitroen.history
 import com.geoffrey.cancitroen.history.dao.HistoryDao
 import com.geoffrey.cancitroen.history.entities.AggregatedSample
 import com.geoffrey.cancitroen.history.entities.VehicleSample
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 
 /**
  * Type pivot pour l'UI : qu'on regarde du raw 5 s ou des agrégats 6 h, on
@@ -75,24 +72,18 @@ class HistoryRepository(private val dao: HistoryDao) {
      *   ≤ 90 j         → 1 h
      *    > 90 j        → 6 h
      */
-    fun pointsForRange(fromMs: Long, toMs: Long): Flow<List<UnifiedDataPoint>> {
-        val durationMs = toMs - fromMs
-        val bucketMs = pickBucket(durationMs)
-        val flow = if (bucketMs == null) {
-            // Raw
-            dao.samplesInRangeFlow(fromMs, toMs).map { list -> list.map { it.toUnified() } }
-        } else {
-            // La rétention est étagée (raw 6 h → 1 min 7 j → 30 min 30 j → 1 h
-            // 90 j → 6 h) : une fenêtre recouvre plusieurs couches. On les lit
-            // toutes et on regroupe au pas de la vue — sinon « 24 h » ignorait
-            // les 6 dernières heures (encore en raw) et « 30 j » la dernière semaine.
-            combine(
-                dao.samplesInRangeFlow(fromMs, toMs),
-                dao.aggregatesAllInRange(fromMs, toMs),
-            ) { raw, agg -> rebucket(raw, agg, bucketMs) }
-        }
+    suspend fun pointsForRange(fromMs: Long, toMs: Long): List<UnifiedDataPoint> {
+        val bucketMs = pickBucket(toMs - fromMs)
+        val raw = dao.samplesInRangeOnce(fromMs, toMs)
+        // La rétention est étagée (raw 6 h → 1 min 7 j → 30 min 30 j → 1 h
+        // 90 j → 6 h) : une fenêtre recouvre plusieurs couches. On les lit
+        // toutes et on regroupe au pas de la vue — sinon « 24 h » ignorait
+        // les 6 dernières heures (encore en raw) et « 30 j » la dernière semaine.
+        val agg = if (bucketMs == null) emptyList() else dao.aggregatesAllInRangeOnce(fromMs, toMs)
         // Conversion hors du main thread (jusqu'à ~10 000 points sur 7 jours).
-        return flow.flowOn(Dispatchers.Default)
+        return withContext(Dispatchers.Default) {
+            if (bucketMs == null) raw.map { it.toUnified() } else rebucket(raw, agg, bucketMs)
+        }
     }
 
     /** Regroupe raw + agrégats (toutes tailles) en buckets de [bucketMs], dans l'ordre. */

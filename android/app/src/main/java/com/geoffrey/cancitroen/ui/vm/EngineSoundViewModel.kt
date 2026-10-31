@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.geoffrey.cancitroen.App
+import com.geoffrey.cancitroen.audio.EngineConfig
 import com.geoffrey.cancitroen.audio.EngineProfiles
 import com.geoffrey.cancitroen.settings.EngineSoundSettings
 import kotlinx.coroutines.Job
@@ -15,6 +16,11 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+
+private const val BLIP_STEPS = 80
+private const val BLIP_RISE_STEPS = 16
+private const val BLIP_HOLD_STEPS = 8
+private const val BLIP_FALL_STEPS = 30
 
 class EngineSoundViewModel(app: Application) : AndroidViewModel(app) {
     private val settings = App.get().settings
@@ -35,6 +41,7 @@ class EngineSoundViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setEnabled(v: Boolean) = viewModelScope.launch { settings.setEngineSoundEnabled(v) }
     fun setProfile(id: String) = viewModelScope.launch { settings.setEngineSoundProfile(id) }
+    fun setCustomEngine(config: EngineConfig) = viewModelScope.launch { settings.setCustomEngine(config) }
     fun setVolume(v: Float) = viewModelScope.launch { settings.setEngineSoundVolume(v) }
 
     /** Pendant le glissé du curseur : effet audible immédiat, sans écrire DataStore. */
@@ -53,14 +60,47 @@ class EngineSoundViewModel(app: Application) : AndroidViewModel(app) {
      * descente en 5 s, retour à l'idle. Override le RPM injecté dans le synth
      * via setManualRpm. Si le synth est OFF, on l'allume le temps de la démo.
      */
-    fun runDemo() {
+    fun runDemo() = playCurve(240) { step, idle, redline ->
+        val rampUpSteps = 100
+        val plateauSteps = 20
+        val rampDownSteps = 100
+        when {
+            step < rampUpSteps -> idle + (redline - idle) * smooth(step / rampUpSteps.toFloat())
+            step < rampUpSteps + plateauSteps -> redline
+            step < rampUpSteps + plateauSteps + rampDownSteps -> {
+                val p = (step - rampUpSteps - plateauSteps) / rampDownSteps.toFloat()
+                redline - (redline - idle) * smooth(p)
+            }
+            else -> idle
+        }
+    }
+
+    /**
+     * Trois coups de gaz : montée franche, pied levé d'un coup, retour au ralenti.
+     * Le moyen le plus direct d'entendre pop & bang et décharge du turbo.
+     */
+    fun runRevBlips() = playCurve(BLIP_STEPS * 3) { step, idle, redline ->
+        val inBlip = step % BLIP_STEPS
+        val top = idle + (redline - idle) * 0.85f
+        when {
+            inBlip < BLIP_RISE_STEPS -> idle + (top - idle) * smooth(inBlip / BLIP_RISE_STEPS.toFloat())
+            inBlip < BLIP_RISE_STEPS + BLIP_HOLD_STEPS -> top
+            inBlip < BLIP_RISE_STEPS + BLIP_HOLD_STEPS + BLIP_FALL_STEPS -> {
+                val p = (inBlip - BLIP_RISE_STEPS - BLIP_HOLD_STEPS) / BLIP_FALL_STEPS.toFloat()
+                idle + (top - idle) * (1f - p) * (1f - p)
+            }
+            else -> idle
+        }
+    }
+
+    private fun playCurve(totalSteps: Int, curve: (step: Int, idle: Float, redline: Float) -> Float) {
         if (_demoRunning.value) return
         demoJob = viewModelScope.launch {
             _demoRunning.value = true
             val originalEnabled = state.value.enabled
             val memeId = state.value.memeEngineId
             val isMemeMode = memeId != null
-            val profile = EngineProfiles.byId(state.value.profileId)
+            val profile = EngineProfiles.resolve(state.value.profileId, state.value.custom)
 
             try {
                 // Active la sortie audio si nécessaire (le service l'aiguillera
@@ -82,30 +122,15 @@ class EngineSoundViewModel(app: Application) : AndroidViewModel(app) {
                         memeRunner.start(audioScope)
                     }
                 } else {
-                    synth.ensureRunning(audioScope)
+                    synth.ensureRunning()
                 }
 
                 val idle = profile.idleRpm
                 val redline = profile.redlineRpm
-                val totalSteps = 240
-                val rampUpSteps = 100
-                val plateauSteps = 20
-                val rampDownSteps = 100
 
                 for (step in 0 until totalSteps) {
                     if (!isActive) break
-                    val rpm = when {
-                        step < rampUpSteps -> {
-                            val p = step / rampUpSteps.toFloat()
-                            idle + (redline - idle) * smooth(p)
-                        }
-                        step < rampUpSteps + plateauSteps -> redline
-                        step < rampUpSteps + plateauSteps + rampDownSteps -> {
-                            val p = (step - rampUpSteps - plateauSteps) / rampDownSteps.toFloat()
-                            redline - (redline - idle) * smooth(p)
-                        }
-                        else -> idle
-                    }
+                    val rpm = curve(step, idle, redline)
                     _demoRpm.value = rpm
                     if (isMemeMode) memeRunner.setManualRpm(rpm)
                     else synth.setManualRpm(rpm)

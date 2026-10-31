@@ -35,12 +35,8 @@ class App : Application() {
         gpsTracker = GpsTracker(this)
         historyDao = HistoryDatabase.get(this).historyDao()
         historyRepo = HistoryRepository(historyDao)
-        engineSynth = EngineSoundSynth(this)
+        engineSynth = EngineSoundSynth()
         memeEngineRunner = MemeEngineRunner(this)
-        // Analyse pitch + chargement WAV différés hors du chemin critique
-        // (sinon bloquaient App.onCreate ~200-500 ms avec autocorrélation
-        // synchrone → trop pour le watchdog SYU au boot froid).
-        engineSynth.loadSamplesAsync(audioScope)
     }
 
     companion object {

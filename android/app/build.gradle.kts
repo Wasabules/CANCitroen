@@ -15,8 +15,9 @@ android {
         applicationId = "com.geoffrey.cancitroen"
         minSdk = 29              // Android 10 (Atoto A6PF tourne >= 10)
         targetSdk = 36
-        versionCode = 26
-        versionName = "0.1.26"
+        versionCode = 36
+        versionName = "0.1.36"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     // Clé de signature LOCALE, non versionnée (android/keystore/, voir
@@ -115,4 +116,12 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
 
     testImplementation(libs.junit)
+
+    // Migrations et rétention, sur une vraie base (voir docs/app/developpement.md).
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.room.testing)
+    // room-testing lit les schémas avec cette version, et le classpath des tests
+    // est aligné sur celui de l'app testée. Debug seulement : l'APK release ne change pas.
+    debugImplementation(libs.kotlinx.serialization.json)
 }

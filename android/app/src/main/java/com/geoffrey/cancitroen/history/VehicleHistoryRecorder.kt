@@ -19,7 +19,9 @@ import kotlinx.coroutines.launch
 /**
  * Enregistre l'historique du véhicule dans la base Room :
  *  - 1 sample / 5 s pendant que le contact est ON
- *  - Détecte les pleins (saut fuelPct ≥ 20% en moins de 10 min)
+ *  - Détecte les pleins ([RefuelDetector]) et demande le ticket à l'arrêt
+ *  - N'enregistre pas le simulateur, sauf demande explicite (réglage Dev) :
+ *    ses valeurs fausseraient l'historique, le prix et la capacité
  *  - Détecte les trajets (start = contact ON et déjà roulé > 5 km/h ;
  *    end = speed=0 prolongé > 60 s ou contact OFF)
  *  - La rétention est gérée par [RollupAggregator] : samples bruts gardés
@@ -34,17 +36,13 @@ class VehicleHistoryRecorder(
     companion object {
         private const val TAG = "HistoryRecorder"
         private const val SAMPLE_INTERVAL_MS = 5_000L
-        private const val REFUEL_MIN_DELTA_PCT = 20
-        private const val REFUEL_WINDOW_MS = 10L * 60L * 1000L  // 10 min
         private const val TRIP_START_SPEED_KMH = 5f
         private const val TRIP_STOP_GRACE_MS = 60_000L  // 60 s à 0 km/h → fin trajet
     }
 
     private var job: Job? = null
 
-    // État interne pour la détection des pleins
-    private var lastFuelPct: Int? = null
-    private var lastFuelPctTs: Long = 0
+    private var refuelDetector: RefuelDetector? = null
 
     // État interne pour la détection des trajets
     private var activeTripId: Long? = null
@@ -61,6 +59,8 @@ class VehicleHistoryRecorder(
 
         // Boucle principale : sample périodique + détections
         job = scope.launch {
+            refuelDetector = RefuelDetector(dao.lastSampleFuelPct() ?: dao.lastAggregateFuelPct())
+
             // Reprend un trajet ouvert s'il y en a un (cas service tué/relancé)
             // ET reconstruit les compteurs in-memory via SQL aggregate (avant
             // on chargeait toute la liste des samples en RAM — pour un trip
@@ -96,7 +96,8 @@ class VehicleHistoryRecorder(
 
     private suspend fun tick() {
         val s = state.value
-        if (!s.contact) {
+        val dev = App.get().settings.flow.first().dev
+        if (!s.contact || (dev.simulatorEnabled && !dev.simulatorRecorded)) {
             // Contact OFF : ferme un éventuel trajet en cours et ne sample plus
             closeActiveTripIfAny()
             return
@@ -161,50 +162,28 @@ class VehicleHistoryRecorder(
         )
         dao.insertSample(sample)
 
-        // ── Refuel detection ──
-        // Subtilité : on ne met PAS à jour `lastFuelPct` quand le niveau MONTE
-        // (delta > 0), sinon un plein progressif (60→80→95% en 10 min) verrait
-        // chaque pas écraser la référence — au final delta calculé = 80→95=15%
-        // < seuil → plein raté. On garde le min observé sur la fenêtre, qui
-        // représente bien "niveau avant plein".
-        val pct = s.fuelPct
-        if (pct != null) {
-            val prev = lastFuelPct
-            if (prev != null && (now - lastFuelPctTs) <= REFUEL_WINDOW_MS) {
-                val delta = pct - prev
-                if (delta >= REFUEL_MIN_DELTA_PCT && speed < 1f) {
-                    // Lit les settings carburant (prix + capacité) au moment du plein
-                    val fuelSettings = App.get().settings.flow.first().fuel
-                    val liters = delta / 100f * fuelSettings.tankCapacityLiters
-                    val price = fuelSettings.pricePerLiter
-                    val cost = liters.toDouble() * price
-                    dao.insertRefuel(
-                        RefuelEvent(
-                            ts = now,
-                            fuelPctBefore = prev,
-                            fuelPctAfter = pct,
-                            litersAdded = liters,
-                            odoKm = s.odo,
-                            pricePerLiter = price,
-                            totalCost = cost,
-                        )
-                    )
-                    Log.i(TAG, "⛽ Plein : $prev% → $pct% (~${"%.1f".format(liters)} L · ${"%.2f".format(cost)} €)")
-                    // Reset après détection : on repart d'un palier propre.
-                    lastFuelPct = pct
-                    lastFuelPctTs = now
-                }
-            }
-            // Ne mettre à jour que sur conso normale (delta ≤ 0) ou si pas
-            // encore initialisé / hors fenêtre — sinon on glisse à chaque
-            // sample d'un plein en cours.
-            val isFirst = prev == null
-            val outOfWindow = (now - lastFuelPctTs) > REFUEL_WINDOW_MS
-            val isConsuming = prev != null && pct <= prev
-            if (isFirst || outOfWindow || isConsuming) {
-                lastFuelPct = pct
-                lastFuelPctTs = now
-            }
+        // ── Plein ──
+        refuelDetector?.onLevel(s.fuelPct, now)?.let { refuel ->
+            // Estimation avec les réglages du moment, en attendant le ticket.
+            val fuelSettings = App.get().settings.flow.first().fuel
+            val liters = (refuel.after - refuel.before) / 100f * fuelSettings.tankCapacityLiters
+            val price = fuelSettings.pricePerLiter
+            val cost = liters.toDouble() * price
+            val merged = FuelCalibration.mergeWithManual(dao.lastRefuel(), refuel.before, refuel.after, now)
+            if (merged != null) dao.updateRefuel(merged)
+            else dao.insertRefuel(
+                RefuelEvent(
+                    ts = now,
+                    fuelPctBefore = refuel.before,
+                    fuelPctAfter = refuel.after,
+                    litersAdded = liters,
+                    odoKm = s.odo,
+                    pricePerLiter = price,
+                    totalCost = cost,
+                    awaitingInput = true,
+                )
+            )
+            Log.i(TAG, "⛽ Plein : ${refuel.before}% → ${refuel.after}% (~${"%.1f".format(liters)} L · ${"%.2f".format(cost)} €)")
         }
     }
 

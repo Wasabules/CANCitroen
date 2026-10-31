@@ -15,6 +15,8 @@ import androidx.compose.ui.unit.dp
 import com.geoffrey.cancitroen.history.entities.Trip
 import com.geoffrey.cancitroen.ui.components.GlassCard
 import com.geoffrey.cancitroen.ui.components.MiniBarChart
+import com.geoffrey.cancitroen.ui.components.SectionTitle
+import com.geoffrey.cancitroen.ui.theme.AppIcons
 import java.util.Calendar
 
 @Composable
@@ -47,10 +49,8 @@ internal fun DistancePerDaySection(trips: List<Trip>) {
     val bars = perDay.toList()
 
     GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
-            Text("🛣️ Kilométrage — 14 derniers jours",
-                color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold,
-                style = MaterialTheme.typography.titleMedium)
+        Column(modifier = Modifier.fillMaxWidth()) {
+            SectionTitle("Kilométrage — 14 derniers jours", AppIcons.Route)
             Spacer(Modifier.height(12.dp))
             MiniBarChart(
                 bars = bars,

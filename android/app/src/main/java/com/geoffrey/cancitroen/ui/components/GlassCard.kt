@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -16,18 +17,21 @@ import com.geoffrey.cancitroen.ui.theme.GlassBg
 import com.geoffrey.cancitroen.ui.theme.GlassBorder
 import com.geoffrey.cancitroen.ui.theme.GlassCardGradient
 
+/** Arrondi commun à toutes les cartes. */
+val CardCorner = 14.dp
+
 /**
  * Card "glass" minimaliste façon dashboard voiture moderne.
  *  - Fond translucide (15% blanc) sur le gradient sombre
  *  - Border thin 1dp avec opacity 15%
  *  - Surimpression d'un gradient subtil interne pour effet "lit par le haut"
- *  - Coins arrondis 20dp par défaut
+ *  - Coins arrondis [CardCorner] par défaut
  */
 @Composable
 fun GlassCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
-    cornerRadius: Dp = 20.dp,
+    cornerRadius: Dp = CardCorner,
     contentPadding: Dp = 16.dp,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -39,6 +43,8 @@ fun GlassCard(
     Surface(
         shape = shape,
         color = GlassBg,
+        // Fond translucide : sans ça, contentColorFor retombe sur du noir.
+        contentColor = MaterialTheme.colorScheme.onSurface,
         border = BorderStroke(1.dp, GlassBorder),
         modifier = modifier
             .clip(shape)

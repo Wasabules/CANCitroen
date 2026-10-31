@@ -1,5 +1,15 @@
 package com.geoffrey.cancitroen.settings
 
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.intPreferencesKey
+import com.geoffrey.cancitroen.audio.ExhaustType
+import com.geoffrey.cancitroen.audio.EngineProfiles
+import com.geoffrey.cancitroen.audio.TurboRelease
+import com.geoffrey.cancitroen.audio.PopLevel
+import com.geoffrey.cancitroen.audio.EngineLayout
+import com.geoffrey.cancitroen.audio.EngineFuel
+import com.geoffrey.cancitroen.audio.EngineConfig
+import com.geoffrey.cancitroen.audio.Aspiration
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
@@ -50,6 +60,10 @@ data class BehaviorSettings(
 /** Outils dev. */
 data class DevSettings(
     val simulatorEnabled: Boolean = false,
+    /** Écrit aussi le simulateur dans l'historique : pour tester Stats et les pleins sans voiture. */
+    val simulatorRecorded: Boolean = false,
+    /** Serveur du test de liaison avec l'app compagnon. */
+    val linkProbeEnabled: Boolean = false,
 )
 
 /** Carburant : prix, capacité du réservoir. */
@@ -58,6 +72,8 @@ data class FuelSettings(
     val pricePerLiter: Double = 1.85,
     /** Capacité réservoir (C2 = 41 L). Sert au calcul "litres ajoutés" sur un plein. */
     val tankCapacityLiters: Float = 41f,
+    /** Correction de la conso indiquée par la voiture, déduite des tickets (1 = aucune). */
+    val consumptionFactor: Double = 1.0,
 )
 
 /** Calibration des capteurs (ajustement à la lecture). */
@@ -80,6 +96,8 @@ data class EngineSoundSettings(
     /** Si non-null, mode "meme" : un son court fired à chaque cycle de
      *  combustion (id du fichier dans assets/memes/engine/, sans extension). */
     val memeEngineId: String? = null,
+    /** Configuration utilisée quand profileId vaut EngineProfiles.CUSTOM_ID. */
+    val custom: EngineConfig = EngineConfig(),
 )
 
 data class AppSettings(
@@ -112,14 +130,28 @@ class AppSettingsRepository(private val context: Context) {
         val AGGRESSIVE_DISABLE_LAUNCHERS = booleanPreferencesKey("aggressive_disable_launchers")
         // DevSettings
         val SIMULATOR = booleanPreferencesKey("simulator_enabled")
+        val SIMULATOR_RECORDED = booleanPreferencesKey("simulator_recorded")
+        val LINK_PROBE = booleanPreferencesKey("link_probe_enabled")
         // FuelSettings
         val FUEL_PRICE = doublePreferencesKey("fuel_price_per_liter")
         val TANK_CAPACITY = floatPreferencesKey("tank_capacity_liters")
+        val CONSUMPTION_FACTOR = doublePreferencesKey("consumption_factor")
         // EngineSoundSettings
         val ENGINE_SOUND_ENABLED = booleanPreferencesKey("engine_sound_enabled")
         val ENGINE_SOUND_PROFILE = stringPreferencesKey("engine_sound_profile")
         val ENGINE_SOUND_VOLUME = floatPreferencesKey("engine_sound_volume")
         val ENGINE_MEME_ID = stringPreferencesKey("engine_meme_id")
+        val ENGINE_CYLINDERS = intPreferencesKey("engine_cylinders")
+        val ENGINE_LAYOUT = stringPreferencesKey("engine_layout")
+        val ENGINE_DISPLACEMENT = intPreferencesKey("engine_displacement_cc")
+        val ENGINE_BORE = intPreferencesKey("engine_bore_mm")
+        val ENGINE_REDLINE = intPreferencesKey("engine_redline_rpm")
+        val ENGINE_EXHAUST = stringPreferencesKey("engine_exhaust")
+        val ENGINE_ASPIRATION = stringPreferencesKey("engine_aspiration")
+        val ENGINE_FUEL = stringPreferencesKey("engine_fuel")
+        val ENGINE_REV_MULTIPLIER = floatPreferencesKey("engine_rev_multiplier")
+        val ENGINE_POPS = stringPreferencesKey("engine_pops")
+        val ENGINE_TURBO_RELEASE = stringPreferencesKey("engine_turbo_release")
         val TEXT_OFFSET = androidx.datastore.preferences.core.intPreferencesKey("t_ext_offset_c")
         // ThemeSettings
         val THEME_ACCENT = stringPreferencesKey("theme_accent")
@@ -146,10 +178,13 @@ class AppSettingsRepository(private val context: Context) {
             ),
             dev = DevSettings(
                 simulatorEnabled = prefs[Keys.SIMULATOR] ?: false,
+                simulatorRecorded = prefs[Keys.SIMULATOR_RECORDED] ?: false,
+                linkProbeEnabled = prefs[Keys.LINK_PROBE] ?: false,
             ),
             fuel = FuelSettings(
                 pricePerLiter = prefs[Keys.FUEL_PRICE] ?: 1.85,
                 tankCapacityLiters = prefs[Keys.TANK_CAPACITY] ?: 41f,
+                consumptionFactor = prefs[Keys.CONSUMPTION_FACTOR] ?: 1.0,
             ),
             calibration = CalibrationSettings(
                 tExtOffsetC = prefs[Keys.TEXT_OFFSET] ?: 0,
@@ -159,6 +194,7 @@ class AppSettingsRepository(private val context: Context) {
                 profileId = prefs[Keys.ENGINE_SOUND_PROFILE] ?: "FOUR_CYL_SPORT",
                 volume = prefs[Keys.ENGINE_SOUND_VOLUME] ?: 0.6f,
                 memeEngineId = prefs[Keys.ENGINE_MEME_ID]?.takeIf { it.isNotBlank() },
+                custom = readEngineConfig(prefs),
             ),
             theme = ThemeSettings(
                 accent = runCatching {
@@ -201,6 +237,15 @@ class AppSettingsRepository(private val context: Context) {
     suspend fun setSimulatorEnabled(value: Boolean) {
         context.dataStore.edit { it[Keys.SIMULATOR] = value }
     }
+    suspend fun setSimulatorRecorded(value: Boolean) {
+        context.dataStore.edit { it[Keys.SIMULATOR_RECORDED] = value }
+    }
+    suspend fun setLinkProbeEnabled(value: Boolean) {
+        context.dataStore.edit { it[Keys.LINK_PROBE] = value }
+    }
+    suspend fun setConsumptionFactor(value: Double) {
+        context.dataStore.edit { it[Keys.CONSUMPTION_FACTOR] = value }
+    }
     suspend fun setFuelDisplayLiters(value: Boolean) {
         context.dataStore.edit { it[Keys.FUEL_LITERS] = value }
     }
@@ -224,6 +269,40 @@ class AppSettingsRepository(private val context: Context) {
     }
     suspend fun setEngineSoundProfile(value: String) {
         context.dataStore.edit { it[Keys.ENGINE_SOUND_PROFILE] = value }
+    }
+    suspend fun setCustomEngine(config: EngineConfig) {
+        context.dataStore.edit {
+            it[Keys.ENGINE_CYLINDERS] = config.cylinders
+            it[Keys.ENGINE_LAYOUT] = config.layout.name
+            it[Keys.ENGINE_DISPLACEMENT] = config.displacementCc
+            it[Keys.ENGINE_BORE] = config.boreMm
+            it[Keys.ENGINE_REDLINE] = config.redlineRpm
+            it[Keys.ENGINE_EXHAUST] = config.exhaust.name
+            it[Keys.ENGINE_ASPIRATION] = config.aspiration.name
+            it[Keys.ENGINE_FUEL] = config.fuel.name
+            val multiplier = config.revMultiplier
+            if (multiplier == null) it.remove(Keys.ENGINE_REV_MULTIPLIER) else it[Keys.ENGINE_REV_MULTIPLIER] = multiplier
+            it[Keys.ENGINE_POPS] = config.pops.name
+            it[Keys.ENGINE_TURBO_RELEASE] = config.turboRelease.name
+            it[Keys.ENGINE_SOUND_PROFILE] = EngineProfiles.CUSTOM_ID
+            it.remove(Keys.ENGINE_MEME_ID)
+        }
+    }
+    private fun readEngineConfig(prefs: Preferences): EngineConfig {
+        val d = EngineConfig()
+        return EngineConfig(
+            cylinders = prefs[Keys.ENGINE_CYLINDERS]?.takeIf { it in EngineConfig.CYLINDER_CHOICES } ?: d.cylinders,
+            layout = EngineLayout.entries.firstOrNull { it.name == prefs[Keys.ENGINE_LAYOUT] } ?: d.layout,
+            displacementCc = (prefs[Keys.ENGINE_DISPLACEMENT] ?: d.displacementCc).coerceIn(EngineConfig.DISPLACEMENT_RANGE),
+            boreMm = (prefs[Keys.ENGINE_BORE] ?: d.boreMm).coerceIn(EngineConfig.BORE_RANGE),
+            redlineRpm = (prefs[Keys.ENGINE_REDLINE] ?: d.redlineRpm).coerceIn(EngineConfig.REDLINE_RANGE),
+            exhaust = ExhaustType.entries.firstOrNull { it.name == prefs[Keys.ENGINE_EXHAUST] } ?: d.exhaust,
+            aspiration = Aspiration.entries.firstOrNull { it.name == prefs[Keys.ENGINE_ASPIRATION] } ?: d.aspiration,
+            fuel = EngineFuel.entries.firstOrNull { it.name == prefs[Keys.ENGINE_FUEL] } ?: d.fuel,
+            revMultiplier = prefs[Keys.ENGINE_REV_MULTIPLIER]?.coerceIn(EngineConfig.MULTIPLIER_MIN, EngineConfig.MULTIPLIER_MAX),
+            pops = PopLevel.entries.firstOrNull { it.name == prefs[Keys.ENGINE_POPS] } ?: d.pops,
+            turboRelease = TurboRelease.entries.firstOrNull { it.name == prefs[Keys.ENGINE_TURBO_RELEASE] } ?: d.turboRelease,
+        )
     }
     suspend fun setEngineSoundVolume(value: Float) {
         context.dataStore.edit { it[Keys.ENGINE_SOUND_VOLUME] = value }

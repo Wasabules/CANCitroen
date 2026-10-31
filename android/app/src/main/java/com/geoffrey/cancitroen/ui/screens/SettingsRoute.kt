@@ -13,6 +13,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.geoffrey.cancitroen.link.LinkProbeServer
 import com.geoffrey.cancitroen.system.LauncherGuard
 import com.geoffrey.cancitroen.system.PermissionsHelper
 import com.geoffrey.cancitroen.ui.vm.SettingsViewModel
@@ -21,6 +22,10 @@ import com.geoffrey.cancitroen.ui.vm.SettingsViewModel
 fun SettingsRoute(vm: SettingsViewModel = viewModel()) {
     val settings by vm.settingsFlow.collectAsStateWithLifecycle()
     val guardStatus by LauncherGuard.status.collectAsStateWithLifecycle()
+    val capacityEstimate by vm.capacityEstimate.collectAsStateWithLifecycle()
+    val consumptionCheck by vm.consumptionCheck.collectAsStateWithLifecycle()
+    val exportStatus by vm.exportStatus.collectAsStateWithLifecycle()
+    val linkProbeStatus by LinkProbeServer.status.collectAsStateWithLifecycle()
     val ctx: Context = LocalContext.current
 
     // Rafraîchit le statut launcher (root, guard, home par défaut) à chaque
@@ -39,6 +44,14 @@ fun SettingsRoute(vm: SettingsViewModel = viewModel()) {
     SettingsScreen(
         settings = settings,
         guardStatus = guardStatus,
+        capacityEstimate = capacityEstimate,
+        consumptionCheck = consumptionCheck,
+        exportStatus = exportStatus,
+        onExportData = vm::exportData,
+        onConsumptionFactorChange = vm::setConsumptionFactor,
+        onSimulatorRecordedChange = vm::setSimulatorRecorded,
+        linkProbeStatus = linkProbeStatus,
+        onLinkProbeChange = vm::setLinkProbeEnabled,
         onLaunchAsHomeChange = { v ->
             vm.setLaunchAsHome(v)
             if (v) PermissionsHelper.openHomeSettings(ctx)

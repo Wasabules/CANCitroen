@@ -37,10 +37,12 @@ import com.geoffrey.cancitroen.decode.VehicleState
 import com.geoffrey.cancitroen.decode.Warnings
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import com.geoffrey.cancitroen.ui.components.GlassCard
 import com.geoffrey.cancitroen.ui.components.KvRow
 import com.geoffrey.cancitroen.ui.components.Pill
 import com.geoffrey.cancitroen.ui.components.PillStyle
 import com.geoffrey.cancitroen.ui.components.SectionCard
+import com.geoffrey.cancitroen.ui.theme.AppIcons
 import com.geoffrey.cancitroen.ui.theme.Dim
 
 /**
@@ -91,11 +93,8 @@ fun DashboardScreen(state: VehicleState, modifier: Modifier = Modifier) {
 
 @Composable
 private fun HeroCard(label: String, value: String, unit: String) {
-    Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-    ) {
-        Column(Modifier.padding(20.dp)) {
+    GlassCard(contentPadding = 20.dp) {
+        Column {
             Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(6.dp))
             Row(verticalAlignment = Alignment.Bottom) {
@@ -115,11 +114,11 @@ private fun HeroCard(label: String, value: String, unit: String) {
 private fun BsiCard(
     keyPosition: KeyPosition, ignitionMode: IgnitionMode, economyMode: Boolean,
     nightMode: Boolean, dashboardBrightness: Int?, datetimeBsi: String?,
-) = SectionCard("🔑 BSI / Contact") {
+) = SectionCard("Contact (BSI)", icon = AppIcons.Key) {
     KvRow("Position clé", keyPosition.name)
     KvRow("Mode allumage", ignitionMode.name)
-    KvRow("Mode économique", if (economyMode) "OUI" else "non")
-    KvRow("Mode nuit", if (nightMode) "OUI" else "non")
+    KvRow("Mode économique", if (economyMode) "oui" else "non")
+    KvRow("Mode nuit", if (nightMode) "oui" else "non")
     KvRow("Luminosité TdB", dashboardBrightness?.let { "$it/15" } ?: "—")
     KvRow("Heure BSI", datetimeBsi ?: "—")
 }
@@ -127,118 +126,118 @@ private fun BsiCard(
 @Composable
 private fun MoteurCard(
     tCoolant: Int?, tOil: Int?, tExt: Int?, reverseGear: Boolean, gearCmb: String?,
-) = SectionCard("🛠 Moteur") {
+) = SectionCard("Moteur", icon = AppIcons.Speed) {
     KvRow("T° liquide refroid.", tCoolant?.toString() ?: "—", "°C")
     KvRow("T° huile", tOil?.toString() ?: "—", "°C")
     KvRow("T° extérieure", tExt?.toString() ?: "—", "°C")
     KvRow("Marche arrière", if (reverseGear) "OUI" else "non")
-    KvRow("Boîte (gear)", gearCmb ?: "—")
+    KvRow("Rapport engagé", gearCmb ?: "—")
 }
 
 @Composable
 private fun CarburantCard(
     fuelPct: Int?, fuelLitersEst: Double?, fuelInst: Double?, rangeKm: Int?,
     oilLevelPct: Int?, oilLevelLitersEst: Double?, tankLiters: Float,
-) = SectionCard("⛽ Carburant / Huile") {
+) = SectionCard("Carburant et huile", icon = AppIcons.LocalGasStation) {
     KvRow("Carburant", fuelPct?.toString() ?: "—", "%")
-    KvRow("↳ Estimation", fuelLitersEst?.let { "%.1f".format(it) } ?: "—", "L / %.0f L".format(tankLiters))
+    KvRow("Estimation", fuelLitersEst?.let { "%.1f".format(it) } ?: "—", "L / %.0f L".format(tankLiters))
     KvRow("Conso instant", fuelInst?.let { "%.1f".format(it) } ?: "—", "l/100")
     KvRow("Autonomie", rangeKm?.toString() ?: "—", "km")
     KvRow("Niveau huile", oilLevelPct?.toString() ?: "—", "%")
-    KvRow("↳ Estimation", oilLevelLitersEst?.let { "%.2f".format(it) } ?: "—", "L / 3 L")
+    KvRow("Estimation", oilLevelLitersEst?.let { "%.2f".format(it) } ?: "—", "L / 3 L")
 }
 
 @Composable
 private fun DistanceCard(
     odo: Double?, tripDist: Double?, tripAvgSpeed: Int?, tripAvgCons: Double?, emfPage: EmfPage,
-) = SectionCard("📏 Distance / Trip") {
+) = SectionCard("Distance et trajet", icon = AppIcons.Straighten) {
     KvRow("Odomètre", odo?.let { "%.1f".format(it) } ?: "—", "km")
-    KvRow("Trip distance", tripDist?.let { "%.1f".format(it) } ?: "—", "km")
-    KvRow("Trip vit. moy", tripAvgSpeed?.toString() ?: "—", "km/h")
-    KvRow("Trip conso moy", tripAvgCons?.let { "%.1f".format(it) } ?: "—", "l/100")
+    KvRow("Distance du trajet", tripDist?.let { "%.1f".format(it) } ?: "—", "km")
+    KvRow("Vitesse moyenne", tripAvgSpeed?.toString() ?: "—", "km/h")
+    KvRow("Conso moyenne", tripAvgCons?.let { "%.1f".format(it) } ?: "—", "l/100")
     KvRow("Page EMF", emfPage.name)
 }
 
 @Composable
 private fun MaintenanceCard(maintDue: Boolean, kmRemaining: Int?, daysRemaining: Int?) =
-    SectionCard("🔧 Maintenance") {
-        KvRow("Entretien dû", if (maintDue) "OUI" else "non")
+    SectionCard("Entretien", icon = AppIcons.Build) {
+        KvRow("Entretien dû", if (maintDue) "oui" else "non")
         KvRow("Km avant entretien", kmRemaining?.toString() ?: "—", "km")
         KvRow("Jours avant ent.", daysRemaining?.toString() ?: "—", "j")
     }
 
 @Composable
 private fun VolantCard(wheelButton: String?, raw: Int, scroll: Int?, scrollDelta: Int) =
-    SectionCard("🎛 Commandes volant") {
+    SectionCard("Commandes au volant", icon = AppIcons.Tune) {
         KvRow(
             "Bouton actif", wheelButton ?: "—",
             valueColor = MaterialTheme.colorScheme.primary,
         )
-        KvRow("Raw byte[0]", "0x%02X".format(raw))
-        KvRow("Scroll", scroll?.toString() ?: "—")
-        KvRow("Δ scroll", scrollDelta.toString())
+        KvRow("Octet brut [0]", "0x%02X".format(raw))
+        KvRow("Molette", scroll?.toString() ?: "—")
+        KvRow("Δ molette", scrollDelta.toString())
     }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun FeuxCard(lights: Lights) = SectionCard("💡 Feux") {
+private fun FeuxCard(lights: Lights) = SectionCard("Feux", icon = AppIcons.Lightbulb) {
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Pill("POSITION",   lights.feuxPosition,     PillStyle.On)
-        Pill("CROISEMENT", lights.feuxCroisement,   PillStyle.On)
-        Pill("ROUTE",      lights.feuxRoute,        PillStyle.On)
-        Pill("ANTIBR. AV", lights.antibrouillardAv, PillStyle.On)
-        Pill("ANTIBR. AR", lights.antibrouillardAr, PillStyle.On)
-        Pill("◀ CLIGNO G", lights.clignoG,          PillStyle.Warn)
-        Pill("CLIGNO D ▶", lights.clignoD,          PillStyle.Warn)
-        Pill("DRL",        lights.drl,              PillStyle.On)
+        Pill("Position",   lights.feuxPosition,     PillStyle.On)
+        Pill("Croisement", lights.feuxCroisement,   PillStyle.On)
+        Pill("Route",      lights.feuxRoute,        PillStyle.On)
+        Pill("Antibrouillard AV", lights.antibrouillardAv, PillStyle.On)
+        Pill("Antibrouillard AR", lights.antibrouillardAr, PillStyle.On)
+        Pill("Clignotant G", lights.clignoG,          PillStyle.Warn)
+        Pill("Clignotant D", lights.clignoD,          PillStyle.Warn)
+        Pill("Feux de jour",        lights.drl,              PillStyle.On)
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PortesCard(doors: Doors) = SectionCard("🚪 Ouvertures") {
+private fun PortesCard(doors: Doors) = SectionCard("Ouvertures", icon = AppIcons.MeetingRoom) {
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Pill("PORTE AVG",      doors.avg,        PillStyle.Err)
-        Pill("PORTE AVD",      doors.avd,        PillStyle.Err)
-        Pill("COFFRE",         doors.coffre,     PillStyle.Err)
-        Pill("CAPOT",          doors.capot,      PillStyle.Err)
-        Pill("VITRE AR",       doors.vitreAr,    PillStyle.Err)
-        Pill("TRAPPE CARB.",   doors.trappeCarb, PillStyle.Warn)
+        Pill("Porte AV G",      doors.avg,        PillStyle.Err)
+        Pill("Porte AV D",      doors.avd,        PillStyle.Err)
+        Pill("Coffre",         doors.coffre,     PillStyle.Err)
+        Pill("Capot",          doors.capot,      PillStyle.Err)
+        Pill("Vitre AR",       doors.vitreAr,    PillStyle.Err)
+        Pill("Trappe carburant",   doors.trappeCarb, PillStyle.Warn)
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TemoinsCard(warn: Warnings, handbrake: Boolean, warningsOn: Boolean) =
-    SectionCard("⚠ Témoins / Alertes") {
+    SectionCard("Témoins et alertes", icon = AppIcons.Warning) {
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Pill("FREIN À MAIN",     handbrake,                 PillStyle.Warn)
-        Pill("RÉSERVE CARB.",    warn.fuelLow,              PillStyle.Warn)
-        Pill("CEINTURE COND.",   warn.driverBelt,           PillStyle.Err)
-        Pill("CEINTURE PASS.",   warn.passengerBelt,        PillStyle.Err)
-        Pill("AIRBAG PASS. OFF", warn.passengerAirbagOff,   PillStyle.Warn)
+        Pill("Frein à main",     handbrake,                 PillStyle.Warn)
+        Pill("Réserve carburant",    warn.fuelLow,              PillStyle.Warn)
+        Pill("Ceinture conducteur",   warn.driverBelt,           PillStyle.Err)
+        Pill("Ceinture passager",   warn.passengerBelt,        PillStyle.Err)
+        Pill("Airbag passager désactivé", warn.passengerAirbagOff,   PillStyle.Warn)
         Pill("ABS",              warn.absActive,            PillStyle.Ok)
-        Pill("ESP en cours",     warn.espInProgress,        PillStyle.On)
+        Pill("ESP en action",     warn.espInProgress,        PillStyle.On)
         Pill("ESP désactivé",    warn.espInactivated,       PillStyle.Warn)
-        Pill("! SERVICE",        warn.serviceExclamation,   PillStyle.Err)
-        Pill("PRESSION HUILE",   warn.oilPressureAlert,     PillStyle.Err)
-        Pill("NIVEAU HUILE",     warn.oilLevelAlert,        PillStyle.Err)
-        Pill("LIQ. REFROID.",    warn.coolantLevelAlert,    PillStyle.Err)
-        Pill("T° MOTEUR MAX",    warn.coolantTempMax,       PillStyle.Err)
-        Pill("T° HUILE MAX",     warn.oilTempMax,           PillStyle.Err)
-        Pill("LIQ. FREIN",       warn.brakeFluidAlert,      PillStyle.Err)
-        Pill("PNEU PRESSION",    warn.tyrePressureLow,      PillStyle.Warn)
-        Pill("FAP COLMATÉ",      warn.fapClogged,           PillStyle.Warn)
-        Pill("ZONE ROUGE",       warn.maxRpm1,              PillStyle.Warn)
-        Pill("WARNINGS",         warningsOn,                PillStyle.Warn)
+        Pill("Service",        warn.serviceExclamation,   PillStyle.Err)
+        Pill("Pression d'huile",   warn.oilPressureAlert,     PillStyle.Err)
+        Pill("Niveau d'huile",     warn.oilLevelAlert,        PillStyle.Err)
+        Pill("Liquide de refroidissement",    warn.coolantLevelAlert,    PillStyle.Err)
+        Pill("T° moteur maximale",    warn.coolantTempMax,       PillStyle.Err)
+        Pill("T° huile maximale",     warn.oilTempMax,           PillStyle.Err)
+        Pill("Liquide de frein",       warn.brakeFluidAlert,      PillStyle.Err)
+        Pill("Pression des pneus",    warn.tyrePressureLow,      PillStyle.Warn)
+        Pill("FAP colmaté",      warn.fapClogged,           PillStyle.Warn)
+        Pill("Zone rouge",       warn.maxRpm1,              PillStyle.Warn)
+        Pill("Feux de détresse",         warningsOn,                PillStyle.Warn)
     }
 }

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -21,10 +22,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.geoffrey.cancitroen.ui.theme.AppIcons
 import com.geoffrey.cancitroen.ui.theme.Dim
 import com.geoffrey.cancitroen.ui.theme.GlassBg
+import com.geoffrey.cancitroen.ui.theme.GlassBgStrong
 import com.geoffrey.cancitroen.ui.theme.GlassBorder
 import com.geoffrey.cancitroen.ui.theme.Ok
 import com.geoffrey.cancitroen.ui.theme.Text as TextColor
@@ -75,14 +79,14 @@ fun TimeRangeBar(
     Column(modifier = modifier
         .fillMaxWidth()
         .clip(RoundedCornerShape(14.dp))
-        .background(GlassBg.copy(alpha = 0.45f))
+        .background(GlassBg)
         .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         // Ligne 1 : navigation + display
         Row(verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ArrowBtn("◄", onClick = { onRangeChange(range.shift(-range.durationMs)) })
+            ArrowBtn(AppIcons.ChevronLeft, "Période précédente", onClick = { onRangeChange(range.shift(-range.durationMs)) })
             // Display range
             Box(modifier = Modifier.weight(1f),
                 contentAlignment = Alignment.Center) {
@@ -91,7 +95,7 @@ fun TimeRangeBar(
                         horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         if (range.isLive()) {
                             Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Ok))
-                            Text("LIVE",
+                            Text("En direct",
                                 color = Ok, fontWeight = FontWeight.SemiBold,
                                 style = MaterialTheme.typography.labelMedium)
                             Text("·", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -104,7 +108,7 @@ fun TimeRangeBar(
                         color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 }
             }
-            ArrowBtn("►", onClick = {
+            ArrowBtn(AppIcons.ChevronRight, "Période suivante", onClick = {
                 val now = System.currentTimeMillis()
                 val shifted = range.shift(range.durationMs)
                 // Empêche de "naviguer dans le futur" : si on dépasse now, on ramène à live
@@ -141,14 +145,14 @@ fun TimeRangeBar(
 }
 
 @Composable
-private fun ArrowBtn(label: String, onClick: () -> Unit) {
+private fun ArrowBtn(icon: ImageVector, description: String, onClick: () -> Unit) {
     Box(modifier = Modifier
         .size(width = 36.dp, height = 30.dp)
         .clip(RoundedCornerShape(8.dp))
-        .background(GlassBg.copy(alpha = 0.6f))
+        .background(GlassBgStrong)
         .clickable(onClick = onClick),
         contentAlignment = Alignment.Center) {
-        Text(label, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium)
+        Icon(icon, contentDescription = description, tint = MaterialTheme.colorScheme.onSurface)
     }
 }
 
@@ -161,7 +165,7 @@ private fun LiveBtn(onClick: () -> Unit) {
         .clickable(onClick = onClick)
         .padding(horizontal = 12.dp),
         contentAlignment = Alignment.Center) {
-        Text("Live", color = Ok, fontWeight = FontWeight.SemiBold,
+        Text("En direct", color = Ok, fontWeight = FontWeight.SemiBold,
             style = MaterialTheme.typography.bodyMedium)
     }
 }

@@ -1,13 +1,9 @@
 package com.geoffrey.cancitroen.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -19,8 +15,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.geoffrey.cancitroen.history.FuelCalibration
+import com.geoffrey.cancitroen.history.entities.Trip
+import com.geoffrey.cancitroen.ui.components.PageTitle
 import com.geoffrey.cancitroen.ui.components.TimeRangeBar
 import com.geoffrey.cancitroen.ui.components.TripDetailSheet
+import com.geoffrey.cancitroen.ui.vm.RefuelViewModel
 import com.geoffrey.cancitroen.ui.vm.StatsViewModel
 import com.geoffrey.cancitroen.ui.screens.stats.ActiveTripCard
 import com.geoffrey.cancitroen.ui.screens.stats.ConsumptionPerTankSection
@@ -36,85 +36,113 @@ import com.geoffrey.cancitroen.ui.screens.stats.SpeedHeatmapSection
 import com.geoffrey.cancitroen.ui.screens.stats.TripsHistorySection
 import kotlinx.coroutines.delay as kxDelay
 
+/** < 60 s : au-delà, `TimeRange.isLive()` n'affiche plus le direct. */
+private const val LIVE_REFRESH_MS = 30_000L
+
 @Composable
 fun StatsScreen(
     modifier: Modifier = Modifier,
     vm: StatsViewModel = viewModel(),
 ) {
     val range by vm.range.collectAsStateWithLifecycle()
-    val points by vm.points.collectAsStateWithLifecycle()
+    val charts by vm.charts.collectAsStateWithLifecycle()
     val allRefuels by vm.allRefuels.collectAsStateWithLifecycle()
     val allTrips by vm.allTrips.collectAsStateWithLifecycle()
     val detailedTrip by vm.detailedTrip.collectAsStateWithLifecycle()
+    val fuel by vm.fuelSettings.collectAsStateWithLifecycle()
+    val refuelVm: RefuelViewModel = viewModel()
 
-    // En mode live, fait avancer la fenêtre chaque minute : les nouveaux
-    // points arrivent déjà via le Flow Room (un insert / 5 s), le décalage du
-    // bord gauche n'a pas besoin de relancer la requête plus souvent.
-    LaunchedEffect(range.isLive()) {
-        while (range.isLive()) {
-            kxDelay(60_000L)
+    // Les graphiques se rafraîchissent avec la fenêtre, pas à chaque insert en
+    // base (toutes les 5 s) : à leur échelle, ces 5 s ne se voient pas.
+    LaunchedEffect(Unit) {
+        while (true) {
             vm.tickLiveRange()
+            kxDelay(LIVE_REFRESH_MS)
         }
     }
 
-    val refuels = remember(allRefuels, range) { allRefuels.filter { it.ts in range.from..range.to } }
+    // En direct, un plein qu'on vient d'ajouter est plus récent que la fin de la fenêtre.
+    val refuels = remember(allRefuels, range) {
+        allRefuels.filter { it.ts >= range.from && (it.ts <= range.to || range.isLive()) }
+    }
     val activeTrip = remember(allTrips) { allTrips.firstOrNull { it.endTs == null } }
-    val pastTrips = remember(allTrips, range) {
-        allTrips.filter { it.endTs != null && it.startTs >= range.from && it.startTs <= range.to }
+    val finishedTrips = remember(allTrips) { allTrips.filter { it.endTs != null } }
+    val pastTrips = remember(finishedTrips, range) {
+        finishedTrips.filter { it.startTs >= range.from && it.startTs <= range.to }
+    }
+    val costOf = remember(allRefuels, fuel) {
+        { t: Trip -> FuelCalibration.tripCost(t, allRefuels, fuel.pricePerLiter, fuel.consumptionFactor) }
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
+    // Liste paresseuse : à l'ouverture de la page, seules les sections visibles
+    // sont composées, pas la dizaine de graphiques.
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 60.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text(
-            "📊 Statistiques",
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.SemiBold,
-            style = MaterialTheme.typography.headlineSmall,
-        )
-
-        // ── Barre de range globale (présets + nav + live) ──
-        TimeRangeBar(
-            range = range,
-            onRangeChange = vm::setRange,
-        )
-
-        if (activeTrip != null) {
-            ActiveTripCard(activeTrip)
+        item(key = "title") {
+            PageTitle("Statistiques")
         }
 
-        FuelHistorySection(points = points, refuels = refuels, range = range)
+        // ── Barre de range globale (présets + nav + live) ──
+        item(key = "range") {
+            TimeRangeBar(
+                range = range,
+                onRangeChange = vm::setRange,
+            )
+        }
 
-        EngineTempSection(points = points, range = range)
+        activeTrip?.let { trip ->
+            item(key = "active") { ActiveTripCard(trip) }
+        }
+
+        item(key = "fuel") {
+            FuelHistorySection(
+                pts = charts.fuel,
+                refuels = refuels,
+                range = range,
+                onRefuelClick = refuelVm::edit,
+                onAddRefuel = refuelVm::addManual,
+            )
+        }
+
+        if (charts.temps.hasEnough) {
+            item(key = "temps") { EngineTempSection(charts.temps, range = range) }
+        }
 
         // Sections daily uniquement si fenêtre > 24 h
-        if (range.durationMs > 24L * 3600 * 1000) {
-            DailyAverageSection(points = points)
+        charts.daily?.let { daily ->
+            item(key = "daily") { DailyAverageSection(daily) }
         }
 
         if (pastTrips.isNotEmpty()) {
-            ConsumptionPerTripSection(pastTrips)
-            DistancePerDaySection(pastTrips)
-            ConsumptionPerTankSection(refuels)
-            FuelCostByMonthSection(allRefuels)
-            RpmHistogramSection(points)
-            SpeedHeatmapSection(points)
-            TripsHistorySection(pastTrips, onTripClick = vm::showTripDetail)
+            item(key = "consTrip") { ConsumptionPerTripSection(pastTrips) }
+        }
+        charts.rpmBars?.let { bars ->
+            item(key = "rpm") { RpmHistogramSection(bars) }
+        }
+        charts.speedGrid?.let { grid ->
+            item(key = "heatmap") { SpeedHeatmapSection(grid) }
+        }
+        if (pastTrips.isNotEmpty()) {
+            item(key = "trips") { TripsHistorySection(pastTrips, costOf, onTripClick = vm::showTripDetail) }
         }
 
-        // Bottom sheet détail
-        detailedTrip?.let { t ->
-            TripDetailSheet(trip = t, onDismiss = vm::dismissTripDetail)
+        // Sur leur propre durée (14 jours, 12 mois, derniers pleins), pas celle de la barre.
+        if (finishedTrips.isNotEmpty()) {
+            item(key = "distance") { DistancePerDaySection(finishedTrips) }
         }
+        item(key = "consTank") { ConsumptionPerTankSection(allRefuels, finishedTrips, fuel.tankCapacityLiters) }
+        item(key = "cost") { FuelCostByMonthSection(allRefuels) }
 
-        if (points.isEmpty() && refuels.isEmpty() && allTrips.isEmpty()) {
-            EmptyState()
+        if (!charts.hasPoints && refuels.isEmpty() && allTrips.isEmpty()) {
+            item(key = "empty") { EmptyState() }
         }
+    }
 
-        Spacer(Modifier.height(40.dp))
+    // Bottom sheet détail
+    detailedTrip?.let { t ->
+        TripDetailSheet(trip = t, cost = costOf(t), onDismiss = vm::dismissTripDetail)
     }
 }

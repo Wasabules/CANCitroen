@@ -52,6 +52,12 @@ explorer le bus, valider des décodeurs et piloter la voiture.
 
 L'EMF n'accepte `0x3E5` que si la BSI est télécodée « RD4 présent ».
 
+### App Android
+
+| Script | Usage | Rôle |
+|---|---|---|
+| `emulateur_atoto.sh` | `./emulateur_atoto.sh [avd]` | lance l'émulateur de l'Atoto avec plus de marge audio (voir `docs/app/developpement.md`) |
+
 ## Bridge HTTP / WebSocket
 
 ```bash

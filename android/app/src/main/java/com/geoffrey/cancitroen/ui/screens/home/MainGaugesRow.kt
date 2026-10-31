@@ -73,7 +73,9 @@ private fun SpeedGauge(
     // Lissage par ressort entre deux échantillons (10 Hz) : l'arc glisse, et
     // le nombre affiché ne recompose que quand l'entier change.
     val canAnim = rememberSmoothedValue(canSpeed())
-    val gpsAnim = rememberSmoothedValue(gpsSpeed ?: 0f)
+    val gpsMarker = remember { GpsMarker() }
+    val showSecondary = gpsMarker.update(gpsSpeed)
+    val gpsAnim = rememberSmoothedValue(gpsMarker.position)
     val canShown by remember { derivedStateOf { canAnim.value.roundToInt() } }
     val gpsShown by remember { derivedStateOf { gpsAnim.value.roundToInt() } }
 
@@ -100,7 +102,6 @@ private fun SpeedGauge(
                 subtitle = "CAN $canShown",
             )
         } else {
-            val showSecondary = gpsSpeed != null && gpsSpeed >= 2f
             CircularGauge(
                 value = { canAnim.value },
                 valueText = canShown.toString(),

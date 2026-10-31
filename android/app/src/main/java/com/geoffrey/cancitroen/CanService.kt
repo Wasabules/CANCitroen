@@ -25,6 +25,7 @@ import com.geoffrey.cancitroen.audio.MemeEngineCatalog
 import com.geoffrey.cancitroen.emf.EmfController
 import com.geoffrey.cancitroen.history.RollupAggregator
 import com.geoffrey.cancitroen.history.VehicleHistoryRecorder
+import com.geoffrey.cancitroen.link.LinkProbeServer
 import com.geoffrey.cancitroen.sim.VehicleSimulator
 import com.geoffrey.cancitroen.swc.SteeringWheelHandler
 import com.geoffrey.cancitroen.system.LauncherGuard
@@ -116,10 +117,13 @@ class CanService : Service() {
      * État pour l'UI, échantillonné à 10 Hz : RPM/vitesse changent à chaque
      * trame 0x0B6 (20-50 Hz), ce qui faisait recomposer l'accueil à ce rythme.
      * Les jauges interpolent entre deux échantillons, l'affichage reste fluide.
+     * La correction de conso ne s'applique qu'ici : l'historique doit garder la
+     * valeur de la voiture, sinon la comparaison aux tickets se corrigerait elle-même.
      */
     @OptIn(kotlinx.coroutines.FlowPreview::class)
     val uiState: StateFlow<VehicleState> by lazy {
-        vehicleState.sample(UI_SAMPLE_MS)
+        val factor = App.get().settings.flow.map { it.fuel.consumptionFactor }.distinctUntilChanged()
+        combine(vehicleState.sample(UI_SAMPLE_MS), factor) { state, f -> applyConsumptionFactor(state, f) }
             .stateIn(scope, SharingStarted.WhileSubscribed(5_000), vehicleState.value)
     }
 
@@ -257,7 +261,7 @@ class CanService : Service() {
                 .map { it.engineSound }
                 .distinctUntilChanged()
                 .collect { sound ->
-                    val profile = EngineProfiles.byId(sound.profileId)
+                    val profile = EngineProfiles.resolve(sound.profileId, sound.custom)
                     engineSynth.setProfile(profile)
                     engineSynth.setVolume(sound.volume)
                     memeRunner.setProfile(profile.cylinders, profile.idleRpm, profile.redlineRpm)
@@ -280,7 +284,7 @@ class CanService : Service() {
                     } else if (sound.enabled) {
                         // Mode synth normal
                         memeRunner.stop()
-                        engineSynth.start(scope)
+                        engineSynth.start()
                     } else {
                         engineSynth.stop()
                         memeRunner.stop()
@@ -309,6 +313,20 @@ class CanService : Service() {
                     } else {
                         Log.i(TAG, "■ Simulateur OFF")
                         simulator.stop()
+                    }
+                }
+        }
+
+        // Serveur du test de liaison avec l'app compagnon
+        scope.launch {
+            App.get().settings.flow
+                .map { it.dev.linkProbeEnabled }
+                .distinctUntilChanged()
+                .collect { enabled ->
+                    if (enabled) {
+                        LinkProbeServer.start(packageManager.getPackageInfo(packageName, 0).versionName.orEmpty())
+                    } else {
+                        LinkProbeServer.stop()
                     }
                 }
         }
@@ -395,6 +413,7 @@ class CanService : Service() {
     }
 
     override fun onDestroy() {
+        LinkProbeServer.stop()
         try { unregisterReceiver(usbPermissionReceiver) } catch (_: Exception) {}
         try { unregisterReceiver(usbAttachReceiver) } catch (_: Exception) {}
         releaseWakeLock()
@@ -480,6 +499,13 @@ class CanService : Service() {
         return if (tExt == s.tExt && fuelLiters == s.fuelLitersEst) s
         else s.copy(tExt = tExt, fuelLitersEst = fuelLiters)
     }
+
+    private fun applyConsumptionFactor(s: VehicleState, factor: Double): VehicleState =
+        if (factor == 1.0) s
+        else s.copy(
+            fuelInst = s.fuelInst?.let { Math.round(it * factor * 10) / 10.0 },
+            tripAvgCons = s.tripAvgCons?.let { Math.round(it * factor * 10) / 10.0 },
+        )
 
     private fun startForegroundWithNotif() {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

@@ -19,6 +19,8 @@ import androidx.compose.ui.unit.dp
 import com.geoffrey.cancitroen.history.entities.RefuelEvent
 import com.geoffrey.cancitroen.ui.components.GlassCard
 import com.geoffrey.cancitroen.ui.components.MiniBarChart
+import com.geoffrey.cancitroen.ui.components.SectionTitle
+import com.geoffrey.cancitroen.ui.theme.AppIcons
 import com.geoffrey.cancitroen.ui.theme.Dim
 
 @Composable
@@ -55,16 +57,19 @@ internal fun FuelCostByMonthSection(refuels: List<RefuelEvent>) {
     }
     val bars = monthsKeys.zip(monthsLabels).map { (k, l) -> l to (totals[k] ?: 0.0) }
     val total12m = totals.values.sum()
+    val estimated = withCost.count { !it.userEntered && it.ts >= now12 }
 
     GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             Row(modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically) {
-                Text("💶 Dépense carburant — 12 mois",
-                    color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold,
-                    style = MaterialTheme.typography.titleMedium)
+                SectionTitle("Dépense carburant — 12 mois", AppIcons.EuroSymbol)
                 Text("Total : ${"%.0f".format(total12m)} €",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            }
+            if (estimated > 0) {
+                Text("Dont $estimated plein(s) sans ticket, estimé(s) au prix réglé",
                     color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
             Spacer(Modifier.height(12.dp))

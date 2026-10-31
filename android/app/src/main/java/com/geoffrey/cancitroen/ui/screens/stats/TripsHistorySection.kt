@@ -17,29 +17,26 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.geoffrey.cancitroen.history.entities.Trip
 import com.geoffrey.cancitroen.ui.components.GlassCard
+import com.geoffrey.cancitroen.ui.components.SectionTitle
+import com.geoffrey.cancitroen.ui.theme.AppIcons
 import com.geoffrey.cancitroen.ui.theme.Dim
 import com.geoffrey.cancitroen.ui.theme.Text as TextColor
 
 @Composable
-internal fun TripsHistorySection(trips: List<Trip>, onTripClick: (Trip) -> Unit) {
+internal fun TripsHistorySection(trips: List<Trip>, costOf: (Trip) -> Double?, onTripClick: (Trip) -> Unit) {
     GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
-            Text(
-                "🚗 Trajets récents",
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold,
-                style = MaterialTheme.typography.titleMedium,
-            )
+        Column(modifier = Modifier.fillMaxWidth()) {
+            SectionTitle("Trajets récents", AppIcons.DirectionsCar)
             Spacer(Modifier.height(8.dp))
             trips.take(15).forEach { t ->
-                TripRow(t, onClick = { onTripClick(t) })
+                TripRow(t, costOf(t), onClick = { onTripClick(t) })
             }
         }
     }
 }
 
 @Composable
-private fun TripRow(t: Trip, onClick: () -> Unit) {
+private fun TripRow(t: Trip, cost: Double?, onClick: () -> Unit) {
     val dist = t.distanceKm
     val dur = t.durationMs?.div(1000)
     Row(
@@ -58,6 +55,7 @@ private fun TripRow(t: Trip, onClick: () -> Unit) {
                     dur?.let { formatDuration(it) },
                     t.avgSpeedKmh?.let { "%.0f km/h moy".format(it) },
                     t.avgConsL100?.let { "%.1f l/100".format(it) },
+                    cost?.let { "≈ %.2f €".format(it) },
                 ).joinToString(" · "),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,

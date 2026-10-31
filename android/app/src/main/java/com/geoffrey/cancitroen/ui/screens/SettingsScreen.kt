@@ -4,12 +4,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -20,12 +23,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.geoffrey.cancitroen.history.DataExport
+import com.geoffrey.cancitroen.history.FuelCalibration
+import com.geoffrey.cancitroen.link.LinkProbeServer
 import com.geoffrey.cancitroen.settings.AppSettings
 import com.geoffrey.cancitroen.swc.SwcAction
 import com.geoffrey.cancitroen.swc.SwcButton
@@ -35,9 +42,15 @@ import com.geoffrey.cancitroen.system.PermissionsHelper
 import com.geoffrey.cancitroen.ui.components.SectionCard
 import com.geoffrey.cancitroen.ui.screens.settings.SwcMappingSection
 import com.geoffrey.cancitroen.ui.theme.AccentPreset
+import com.geoffrey.cancitroen.ui.theme.AppIcons
+import com.geoffrey.cancitroen.ui.theme.Err
+import com.geoffrey.cancitroen.ui.theme.Ok
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 /**
  * Onglets de la page Paramètres. L'ordre reflète la fréquence d'usage : le
@@ -49,19 +62,27 @@ import java.util.Locale
  * callbacks dédiés — pas de logique partagée entre eux pour limiter les
  * recompositions croisées.
  */
-private enum class SettingsTab(val emoji: String, val title: String) {
-    SWC          ("🎛", "Volant"),
-    THEME        ("🎨", "Thème"),
-    BEHAVIOR     ("⚙",  "Comportement"),
-    SENSORS_FUEL ("🌡", "Capteurs & ⛽"),
-    PERMISSIONS  ("🔐", "Permissions"),
-    DEV          ("🧪", "Dev"),
+private enum class SettingsTab(val icon: ImageVector, val title: String) {
+    SWC          (AppIcons.Tune,       "Volant"),
+    THEME        (AppIcons.Palette,    "Thème"),
+    BEHAVIOR     (AppIcons.Settings,   "Comportement"),
+    SENSORS_FUEL (AppIcons.Thermostat, "Capteurs et carburant"),
+    PERMISSIONS  (AppIcons.Lock,       "Permissions"),
+    DEV          (AppIcons.Code,       "Développeur"),
 }
 
 @Composable
 fun SettingsScreen(
     settings: AppSettings,
     guardStatus: LauncherGuard.Status?,
+    capacityEstimate: FuelCalibration.CapacityEstimate,
+    consumptionCheck: FuelCalibration.ConsumptionCheck,
+    exportStatus: String?,
+    onExportData: () -> Unit,
+    onConsumptionFactorChange: (Double) -> Unit,
+    onSimulatorRecordedChange: (Boolean) -> Unit,
+    linkProbeStatus: LinkProbeServer.Status,
+    onLinkProbeChange: (Boolean) -> Unit,
     onLaunchAsHomeChange: (Boolean) -> Unit,
     onForceHomeRootChange: (Boolean) -> Unit,
     onAggressiveDisableChange: (Boolean) -> Unit,
@@ -108,12 +129,17 @@ fun SettingsScreen(
                 Tab(
                     selected = selected == idx,
                     onClick = { selected = idx },
+                    selectedContentColor = MaterialTheme.colorScheme.primary,
+                    unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     text = {
-                        Text(
-                            "${tab.emoji} ${tab.title}",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = if (selected == idx) FontWeight.SemiBold else FontWeight.Normal,
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(tab.icon, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Text(
+                                tab.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = if (selected == idx) FontWeight.SemiBold else FontWeight.Normal,
+                            )
+                        }
                     },
                 )
             }
@@ -134,7 +160,7 @@ fun SettingsScreen(
             }
 
             SettingsTab.THEME -> TabContent {
-                SectionCard("🎨 Thème") {
+                SectionCard("Thème", icon = AppIcons.Palette) {
                     Text(
                         "Choisis la teinte principale pour matcher l'ambiance lumineuse de ta voiture.",
                         style = MaterialTheme.typography.bodySmall,
@@ -151,7 +177,7 @@ fun SettingsScreen(
             SettingsTab.BEHAVIOR -> TabContent {
                 val isHome = remember(permTick) { PermissionsHelper.isDefaultHome(ctx) }
                 val currentHome = remember(permTick) { PermissionsHelper.currentDefaultHomePackage(ctx) }
-                SectionCard("⚙ Comportement") {
+                SectionCard("Comportement", icon = AppIcons.Settings) {
                     SwitchRow("Lancer comme launcher Atoto (standard)",
                         settings.behavior.launchAsHome, onLaunchAsHomeChange)
                     if (settings.behavior.launchAsHome) {
@@ -174,7 +200,7 @@ fun SettingsScreen(
             }
 
             SettingsTab.SENSORS_FUEL -> TabContent {
-                SectionCard("🌡 Calibration capteurs") {
+                SectionCard("Calibration des capteurs", icon = AppIcons.Thermostat) {
                     NumberRow(
                         label = "Décalage T° extérieure",
                         value = settings.calibration.tExtOffsetC.toDouble(),
@@ -193,7 +219,7 @@ fun SettingsScreen(
                     )
                 }
 
-                SectionCard("⛽ Carburant") {
+                SectionCard("Carburant", icon = AppIcons.LocalGasStation) {
                     NumberRow(
                         label = "Prix au litre",
                         value = settings.fuel.pricePerLiter,
@@ -212,14 +238,36 @@ fun SettingsScreen(
                         step = 1.0,
                         min = 20.0,
                         max = 100.0,
-                        decimals = 0,
+                        decimals = 1,
                         onChange = { onTankCapacityChange(it.toFloat()) },
                     )
+                    TankCapacityEstimateRow(capacityEstimate, onApply = onTankCapacityChange)
+                    ConsumptionFactorRow(
+                        check = consumptionCheck,
+                        applied = settings.fuel.consumptionFactor,
+                        onChange = onConsumptionFactorChange,
+                    )
                     Text(
-                        "Le coût d'un plein est calculé à partir de ces deux valeurs au moment de la détection.",
+                        "Le prix au litre se met à jour à chaque ticket saisi. Ces deux valeurs " +
+                            "servent à estimer un plein tant que son ticket n'est pas saisi.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+
+                SectionCard("Données", icon = AppIcons.Save) {
+                    Text(
+                        "Exporte les pleins et les trajets en CSV, avec une copie complète de l'historique, " +
+                            "dans Téléchargements/${DataExport.FOLDER}. Ces fichiers survivent à une désinstallation.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(onClick = onExportData) { Text("Exporter") }
+                    if (exportStatus != null) {
+                        Text(exportStatus, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface)
+                    }
                 }
             }
 
@@ -231,7 +279,7 @@ fun SettingsScreen(
                 val battOk = remember(permTick) { PermissionsHelper.isIgnoringBatteryOptimizations(ctx) }
                 val notifLisOk = remember(permTick) { PermissionsHelper.isNotificationListenerEnabled(ctx) }
 
-                SectionCard("🔐 Permissions") {
+                SectionCard("Permissions", icon = AppIcons.Lock) {
                     Text(
                         "Sur Atoto Android 10, certaines permissions sont des accès spéciaux à activer manuellement.",
                         style = MaterialTheme.typography.bodySmall,
@@ -267,7 +315,7 @@ fun SettingsScreen(
             }
 
             SettingsTab.DEV -> TabContent {
-                SectionCard("🧪 Démo / développement") {
+                SectionCard("Démo et développement", icon = AppIcons.Code) {
                     SwitchRow("Mode simulateur (données factices)",
                         settings.dev.simulatorEnabled, onSimulatorChange)
                     Text(
@@ -275,6 +323,24 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    SwitchRow("Enregistrer le simulateur dans l'historique",
+                        settings.dev.simulatorRecorded, onSimulatorRecordedChange)
+                    Text(
+                        "Pour tester Stats et les pleins sans voiture. À laisser désactivé sur la voiture : " +
+                            "les faux trajets et faux pleins restent ensuite dans l'historique.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                SectionCard("App compagnon", icon = AppIcons.PhoneAndroid) {
+                    SwitchRow("Test de liaison avec le téléphone",
+                        settings.dev.linkProbeEnabled, onLinkProbeChange)
+                    Text(
+                        "Répond au test de l'app compagnon sur le port ${LinkProbeServer.PORT}, sans envoyer de données du véhicule.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (settings.dev.linkProbeEnabled) LinkProbeStatusText(linkProbeStatus)
                 }
             }
         }
@@ -352,11 +418,12 @@ private fun PermissionRow(
         Row(verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.weight(1f)) {
-            Text(if (granted) "✓" else "✗",
-                color = if (granted)
-                    androidx.compose.ui.graphics.Color(0xFF66BB6A)
-                else androidx.compose.ui.graphics.Color(0xFFEF5350),
-                style = MaterialTheme.typography.titleMedium)
+            Icon(
+                if (granted) AppIcons.CheckCircle else AppIcons.Error,
+                contentDescription = if (granted) "Accordé" else "Non accordé",
+                tint = if (granted) Ok else Err,
+                modifier = Modifier.size(20.dp),
+            )
             Text(label, style = MaterialTheme.typography.bodyMedium)
         }
         if (!granted) {
@@ -393,12 +460,19 @@ private fun LauncherStatusRow(
         modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 6.dp),
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                if (isDefault) "✓ Launcher par défaut actuel"
-                else "⚠ Un autre launcher est actif",
-                color = accent,
-                style = MaterialTheme.typography.bodyMedium,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(
+                    if (isDefault) AppIcons.CheckCircle else AppIcons.Warning,
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    if (isDefault) "Launcher par défaut actuel" else "Un autre launcher est actif",
+                    color = accent,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
             if (!isDefault) {
                 Text(
                     "Actuel : ${currentHome ?: "(aucun — Android affiche le picker)"}",
@@ -414,6 +488,23 @@ private fun LauncherStatusRow(
             ) { Text("Redéfinir", style = MaterialTheme.typography.bodyMedium) }
         }
     }
+}
+
+@Composable
+private fun LinkProbeStatusText(status: LinkProbeServer.Status) {
+    LaunchedEffect(Unit) {
+        while (true) {
+            withContext(Dispatchers.IO) { LinkProbeServer.refreshAddresses() }
+            delay(5_000)
+        }
+    }
+    val text = buildString {
+        status.error?.let { append("Serveur arrêté : ").append(it).append('\n') }
+        append("Adresses : ").append(status.addresses.joinToString(" · ").ifEmpty { "aucune" }).append('\n')
+        append("Requêtes reçues : ").append(status.hits)
+        status.lastHit?.let { append(" · dernière : ").append(it) }
+    }
+    Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
 }
 
 @Composable
@@ -461,7 +552,7 @@ private fun LauncherRootSection(
     val rootKnown = status != null
     val rootOk = status?.rootAvailable == true
 
-    SectionCard("🏠 Launcher forcé (root)") {
+    SectionCard("Launcher forcé (root)", icon = AppIcons.Home) {
         Text(
             "Remplace le launcher d'origine : CANCitroen devient l'écran d'accueil du " +
                 "système, et un service root le ramène au premier plan si le launcher " +
@@ -475,7 +566,7 @@ private fun LauncherRootSection(
 
         // Statut root
         StatusLine(
-            symbol = if (!rootKnown) "…" else if (rootOk) "✓" else "✗",
+            symbol = if (!rootKnown) AppIcons.HourglassEmpty else if (rootOk) AppIcons.CheckCircle else AppIcons.Error,
             symbolColor = if (!rootKnown) MaterialTheme.colorScheme.onSurfaceVariant
                           else if (rootOk) green else red,
             text = when {
@@ -503,7 +594,7 @@ private fun LauncherRootSection(
         if (forceHomeRoot) {
             val running = status?.guardRunning == true
             StatusLine(
-                symbol = if (running) "✓" else "⏳",
+                symbol = if (running) AppIcons.CheckCircle else AppIcons.HourglassEmpty,
                 symbolColor = if (running) green else amber,
                 text = when {
                     !running -> "Service root en attente…"
@@ -513,7 +604,7 @@ private fun LauncherRootSection(
                 },
             )
             StatusLine(
-                symbol = if (status?.isDefaultHome == true) "✓" else "⚠",
+                symbol = if (status?.isDefaultHome == true) AppIcons.CheckCircle else AppIcons.Warning,
                 symbolColor = if (status?.isDefaultHome == true) green else amber,
                 text = if (status?.isDefaultHome == true)
                     "Home par défaut : CANCitroen"
@@ -521,7 +612,7 @@ private fun LauncherRootSection(
             )
             status?.fytLauncher?.let { romLauncher ->
                 StatusLine(
-                    symbol = if (status.isFytLauncher) "✓" else "⚠",
+                    symbol = if (status.isFytLauncher) AppIcons.CheckCircle else AppIcons.Warning,
                     symbolColor = if (status.isFytLauncher) green else amber,
                     text = if (status.isFytLauncher)
                         "Launcher du ROM : CANCitroen (au lieu de $romLauncher)"
@@ -530,7 +621,7 @@ private fun LauncherRootSection(
             }
             if (status?.bootHookSupported == true) {
                 StatusLine(
-                    symbol = if (status.bootHookInstalled) "✓" else "⏳",
+                    symbol = if (status.bootHookInstalled) AppIcons.CheckCircle else AppIcons.HourglassEmpty,
                     symbolColor = if (status.bootHookInstalled) green else amber,
                     text = if (status.bootHookInstalled)
                         "Démarrage au boot via Magisk (service.d)"
@@ -611,15 +702,83 @@ private fun guardActivitySummary(s: LauncherGuard.Status): String {
 private fun hhmm(epochSeconds: Long?): String =
     epochSeconds?.let { SimpleDateFormat("HH:mm", Locale.FRANCE).format(Date(it * 1000)) } ?: "—"
 
+/**
+ * Capacité déduite des tickets, à appliquer d'un geste : la jauge n'est pas
+ * parfaitement linéaire, le réglage reste un choix de l'utilisateur.
+ */
+@Composable
+private fun TankCapacityEstimateRow(
+    estimate: FuelCalibration.CapacityEstimate,
+    onApply: (Float) -> Unit,
+) {
+    val liters = estimate.liters
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+    ) {
+        Text(
+            if (liters != null) "D'après ${estimate.fills} pleins : ${"%.1f".format(liters)} L"
+            else "Estimation d'après les tickets : ${estimate.fills}/${FuelCalibration.MIN_USABLE_FILLS} " +
+                "pleins exploitables (hausse d'au moins ${FuelCalibration.MIN_USABLE_RISE_PCT} %, " +
+                "jauge sous 100 % à l'arrivée)",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        if (liters != null) {
+            OutlinedButton(onClick = { onApply(liters.toFloat()) }) { Text("Appliquer") }
+        }
+    }
+}
+
+/**
+ * Correction de la conso indiquée par la voiture. Elle s'applique à l'affichage
+ * en direct et au coût des trajets ; l'historique garde les valeurs de la voiture.
+ */
+@Composable
+private fun ConsumptionFactorRow(
+    check: FuelCalibration.ConsumptionCheck,
+    applied: Double,
+    onChange: (Double) -> Unit,
+) {
+    val factor = check.factor
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+    ) {
+        Text(
+            buildString {
+                if (factor != null) {
+                    append("Conso réelle %.1f l/100, indiquée %.1f l/100 sur %d mesures : correction ×%.2f"
+                        .format(check.realL100, check.shownL100, check.fills, factor))
+                } else {
+                    append("Correction de conso d'après les tickets : ${check.fills}/" +
+                        "${FuelCalibration.MIN_USABLE_FILLS} mesures exploitables")
+                }
+                if (applied != 1.0) append(". Appliquée : ×%.2f".format(applied))
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        if (factor != null && factor != applied) {
+            OutlinedButton(onClick = { onChange(factor) }) { Text("Appliquer") }
+        }
+        if (applied != 1.0) {
+            OutlinedButton(onClick = { onChange(1.0) }) { Text("Retirer") }
+        }
+    }
+}
+
 /** Ligne "symbole coloré + texte" réutilisée pour les statuts. */
 @Composable
-private fun StatusLine(symbol: String, symbolColor: Color, text: String) {
+private fun StatusLine(symbol: ImageVector, symbolColor: Color, text: String) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
     ) {
-        Text(symbol, color = symbolColor, style = MaterialTheme.typography.titleMedium)
+        Icon(symbol, contentDescription = null, tint = symbolColor, modifier = Modifier.size(18.dp))
         Text(text, style = MaterialTheme.typography.bodyMedium)
     }
 }

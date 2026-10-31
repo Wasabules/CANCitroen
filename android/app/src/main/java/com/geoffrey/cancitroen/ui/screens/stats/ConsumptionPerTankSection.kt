@@ -13,41 +13,42 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.geoffrey.cancitroen.history.FuelCalibration
 import com.geoffrey.cancitroen.history.entities.RefuelEvent
+import com.geoffrey.cancitroen.history.entities.Trip
 import com.geoffrey.cancitroen.ui.components.GlassCard
 import com.geoffrey.cancitroen.ui.components.MiniBarChart
-import com.geoffrey.cancitroen.ui.theme.Dim
+import com.geoffrey.cancitroen.ui.components.SectionTitle
+import com.geoffrey.cancitroen.ui.theme.AppIcons
+
+/** Dernières mesures affichées. */
+private const val MAX_BARS = 12
 
 @Composable
-internal fun ConsumptionPerTankSection(refuels: List<RefuelEvent>) {
-    if (refuels.size < 2) return
-    // refuels est trié desc par ts → on remet en ordre asc
-    val sorted = refuels.sortedBy { it.ts }
-    // Pour chaque pair (n-1, n) avec odo connus : litres ajoutés au n / (odo[n] - odo[n-1]) * 100
-    val sdfLabel = remember { java.text.SimpleDateFormat("d/M", java.util.Locale.FRANCE) }
-    val bars = mutableListOf<Pair<String, Double>>()
-    for (i in 1 until sorted.size) {
-        val a = sorted[i - 1]
-        val b = sorted[i]
-        val da = a.odoKm
-        val db = b.odoKm
-        if (da == null || db == null) continue
-        val km = db - da
-        if (km <= 0) continue
-        val l100 = (b.litersAdded.toDouble() / km) * 100.0
-        if (l100 in 2.0..25.0) {  // filtre valeurs aberrantes
-            bars += sdfLabel.format(java.util.Date(b.ts)) to l100
-        }
+internal fun ConsumptionPerTankSection(
+    refuels: List<RefuelEvent>,
+    trips: List<Trip>,
+    capacityLiters: Float,
+) {
+    val (bars, check) = remember(refuels, trips, capacityLiters) {
+        val sdf = java.text.SimpleDateFormat("d/M", java.util.Locale.FRANCE)
+        FuelCalibration.tankConsumptions(refuels, capacityLiters)
+            .takeLast(MAX_BARS)
+            .map { sdf.format(java.util.Date(it.ts)) to it.l100 } to
+            FuelCalibration.consumptionCheck(refuels, trips, capacityLiters)
     }
     if (bars.isEmpty()) return
 
     GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
-            Text("⛽ Conso réelle au plein",
-                color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold,
-                style = MaterialTheme.typography.titleMedium)
-            Text("Litres ajoutés ÷ km parcourus depuis le précédent plein",
+        Column(modifier = Modifier.fillMaxWidth()) {
+            SectionTitle("Conso réelle entre deux pleins", AppIcons.LocalGasStation)
+            Text("D'après le ticket si les deux pleins finissent au même niveau, sinon d'après la jauge",
                 color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            if (check.realL100 != null && check.shownL100 != null) {
+                Text("Réelle %.1f l/100 · indiquée par la voiture %.1f l/100 (%d mesures)"
+                    .format(check.realL100, check.shownL100, check.fills),
+                    color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodySmall)
+            }
             Spacer(Modifier.height(12.dp))
             MiniBarChart(
                 bars = bars,
