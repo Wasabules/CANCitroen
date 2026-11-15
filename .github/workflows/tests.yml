@@ -19,7 +19,7 @@ jobs:
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" > /dev/null
       - name: Tests JVM
         working-directory: android
-        run: ./gradlew :app:testDebugUnitTest :companion:testDebugUnitTest --console=plain
+        run: ./gradlew :app:testDebugUnitTest :companion:testDebugUnitTest :shared:testDebugUnitTest --console=plain
       # Build release sans la clé locale : vérifie R8 et les ressources réduites.
       - name: Build release
         working-directory: android
