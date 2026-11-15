@@ -6,6 +6,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
+import com.geoffrey.cancitroen.shared.TelemetryFormat
 import java.io.IOException
 
 /** Les fichiers de `Documents/CANCitroen`, à récupérer sur PC sans passer par le cloud. */
@@ -84,7 +85,7 @@ class TelemetryFiles(context: Context) {
     }
 
     companion object {
-        private const val SAMPLE_PREFIX = "echantillons-"
-        private fun sampleFile(day: String) = "$SAMPLE_PREFIX$day.csv"
+        private const val SAMPLE_PREFIX = TelemetryFormat.SAMPLE_FILE_PREFIX
+        private fun sampleFile(day: String) = TelemetryFormat.sampleFile(day)
     }
 }

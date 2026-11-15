@@ -2,6 +2,7 @@ package com.geoffrey.cancitroen.link
 
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import com.geoffrey.cancitroen.shared.LinkProtocol
 import java.math.BigInteger
 import java.net.Inet4Address
 import java.net.InetAddress
@@ -10,8 +11,6 @@ import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Date
-import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
 import javax.net.ServerSocketFactory
 import javax.net.ssl.KeyManagerFactory
 import javax.net.ssl.SSLContext
@@ -25,11 +24,7 @@ import javax.security.auth.x500.X500Principal
  * Il reçoit en échange un jeton de 256 bits, utilisé ensuite sous TLS épinglé.
  */
 internal object TransferSecurity {
-    fun proof(code: String, fingerprint: ByteArray): String {
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(code.toByteArray(), "HmacSHA256"))
-        return hex(mac.doFinal(fingerprint))
-    }
+    fun proof(code: String, fingerprint: ByteArray): String = LinkProtocol.pairingProof(code, fingerprint)
 
     fun newToken(): String = hex(ByteArray(32).also { SecureRandom().nextBytes(it) })
 

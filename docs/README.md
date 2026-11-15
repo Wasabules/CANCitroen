@@ -9,7 +9,7 @@
 | Comprendre l'app Android | [app/architecture.md](app/architecture.md) |
 | Construire, tester, livrer l'app | [app/developpement.md](app/developpement.md) |
 | Le launcher forcé par root | [app/launcher_root.md](app/launcher_root.md) |
-| Transférer l'historique vers le téléphone | [app/compagnon.md](app/compagnon.md) |
+| Suivre la voiture sur le téléphone et dans Android Auto, transférer l'historique | [app/compagnon.md](app/compagnon.md) |
 | Publier la voiture dans Home Assistant | [app/home_assistant.md](app/home_assistant.md) |
 | Utiliser les scripts PC | [../scripts/README.md](../scripts/README.md) |
 
@@ -39,7 +39,7 @@
 | [architecture.md](app/architecture.md) | pipeline CAN, service, état, volant, EMF, historique, UI | **à jour** |
 | [developpement.md](app/developpement.md) | chaîne d'outils, commandes, tests, livraison, déploiement, migrations Room | **à jour** |
 | [launcher_root.md](app/launcher_root.md) | launcher forcé : analyse du ROM FYT, mécanisme, fichiers, diagnostic | **à jour** |
-| [compagnon.md](app/compagnon.md) | app compagnon : transfert chiffré de l'historique pendant Android Auto, sécurité, protocole | **à jour** |
+| [compagnon.md](app/compagnon.md) | app compagnon : suivi pendant le trajet, graphiques, écrans Android Auto, transfert chiffré, sécurité, protocole | **à jour** |
 | [home_assistant.md](app/home_assistant.md) | capteurs publiés dans Home Assistant, tableau de bord et automatisations | **à jour** |
 | [atoto_a6pf_integration.md](app/atoto_a6pf_integration.md) | options d'architecture envisagées (bridge PC, app, ESP32) | réflexion initiale |
 | [android_app_spec.md](app/android_app_spec.md) | spécification d'origine de l'app | **historique** : l'app a évolué, voir architecture.md |

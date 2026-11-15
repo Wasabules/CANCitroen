@@ -22,9 +22,17 @@ import kotlinx.coroutines.flow.StateFlow
  * Si la permission [Manifest.permission.ACCESS_FINE_LOCATION] n'est pas accordée,
  * expose `null`. Sinon expose ([SatelliteState]) en live via [state].
  */
+/** Un point GPS : où est la voiture, à quel instant, avec quelle précision. */
+data class GpsFix(val lat: Double, val lon: Double, val accuracyM: Float?, val bearing: Float?, val ts: Long)
+
 class GpsTracker(private val context: Context) {
 
-    companion object { private const val TAG = "GpsTracker" }
+    companion object {
+        private const val TAG = "GpsTracker"
+        private const val KEEP_FRESH_MS = 5L * 60_000L
+        private const val BACKGROUND_INTERVAL_MS = 10_000L
+        private const val BACKGROUND_CHECK_MS = 30_000L
+    }
 
     data class SatelliteState(
         val visible: Int = 0,
@@ -42,6 +50,10 @@ class GpsTracker(private val context: Context) {
     /** Timestamp du dernier callback location reçu, pour détecter la perte de fix. */
     @Volatile private var lastLocationMs: Long = 0L
 
+    /** Dernier point reçu, gardé même après la perte du fix : c'est là que la voiture s'est garée. */
+    @Volatile var lastFix: GpsFix? = null
+        private set
+
     /** Watchdog handler partagé — instancié une seule fois, jamais leaké. */
     private val watchdogHandler = Handler(Looper.getMainLooper())
     private var watchdogRunnable: Runnable? = null
@@ -54,8 +66,64 @@ class GpsTracker(private val context: Context) {
         if (!simulating) _speedKmh.value = kmh
     }
 
+    private fun fixOf(loc: Location) = GpsFix(
+        lat = loc.latitude,
+        lon = loc.longitude,
+        accuracyM = loc.accuracy.takeIf { loc.hasAccuracy() },
+        bearing = loc.bearing.takeIf { loc.hasBearing() },
+        ts = loc.time,
+    )
+
+    /** Pour le compagnon, quand l'écran de l'app n'est pas affiché : un point de temps en temps suffit. */
+    private val backgroundListener = LocationListener { loc -> lastFix = fixOf(loc) }
+    @Volatile private var backgroundUntilMs = 0L
+    private var backgroundOn = false
+    private val backgroundStop = object : Runnable {
+        override fun run() {
+            if (System.currentTimeMillis() < backgroundUntilMs) {
+                watchdogHandler.postDelayed(this, BACKGROUND_CHECK_MS)
+                return
+            }
+            try { locManager?.removeUpdates(backgroundListener) } catch (_: Exception) {}
+            backgroundOn = false
+        }
+    }
+
+    /**
+     * Le point le plus récent pour le compagnon, qui le redemande à chaque interrogation : le GPS
+     * reste actif à basse fréquence [KEEP_FRESH_MS] après la dernière demande, même quand Android
+     * Auto occupe l'écran (avec la localisation « toujours autorisée »). Appelable de tout thread.
+     */
+    fun freshFix(): GpsFix? {
+        backgroundUntilMs = System.currentTimeMillis() + KEEP_FRESH_MS
+        watchdogHandler.post { keepBackgroundUpdates() }
+        val known = try {
+            locManager?.getLastKnownLocation(LocationManager.GPS_PROVIDER)?.let(::fixOf)
+        } catch (_: SecurityException) {
+            null
+        }
+        return listOfNotNull(lastFix, known).maxByOrNull { it.ts }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun keepBackgroundUpdates() {
+        if (backgroundOn) return
+        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        val lm = locManager ?: return
+        if (!granted) return
+        try {
+            lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, BACKGROUND_INTERVAL_MS, 0f, backgroundListener, Looper.getMainLooper())
+            backgroundOn = true
+            watchdogHandler.postDelayed(backgroundStop, BACKGROUND_CHECK_MS)
+        } catch (e: Exception) {
+            Log.w(TAG, "GPS pour le compagnon indisponible", e)
+        }
+    }
+
     private val locationListener = LocationListener { loc ->
         lastLocationMs = System.currentTimeMillis()
+        lastFix = fixOf(loc)
         if (loc.hasSpeed()) {
             setRealSpeed((loc.speed * 3.6f).coerceAtLeast(0f))
         }

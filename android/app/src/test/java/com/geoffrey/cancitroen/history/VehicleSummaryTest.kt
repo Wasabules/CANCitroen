@@ -1,9 +1,12 @@
 package com.geoffrey.cancitroen.history
 
+import com.geoffrey.cancitroen.history.dao.TripResumeCounters
 import com.geoffrey.cancitroen.history.entities.AggregatedSample
 import com.geoffrey.cancitroen.history.entities.RefuelEvent
 import com.geoffrey.cancitroen.history.entities.Trip
 import com.geoffrey.cancitroen.history.entities.VehicleSample
+import com.geoffrey.cancitroen.shared.SummaryFields
+import com.geoffrey.cancitroen.system.GpsFix
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -94,5 +97,36 @@ class VehicleSummaryTest {
         assertNull(summary.lastSeenTs)
         assertNull(summary.monthCons)
         assertEquals(0, summary.monthTrips)
+    }
+
+    @Test fun trajetEnCoursAvecSesSommesEtPositionSurDemande() {
+        val open = Trip(id = 7, startTs = now - 20 * minute, startOdoKm = 1000.0)
+        val summary = VehicleSummary.compute(
+            now = now,
+            recent = listOf(VehicleSample(ts = now - minute, odoKm = 1012.5)),
+            lastAggregate = null,
+            trips = listOf(trip(now - day, 10.0, 6f), open),
+            refuels = emptyList(),
+            consumptionFactor = 1.1,
+            currentCounters = TripResumeCounters(speedSum = 900.0, speedCount = 20, speedMax = 92.0, consSum = 120.0, consCount = 20),
+            pricePerLiter = 1.85,
+            position = GpsFix(48.85, 2.35, 8f, 90f, now - minute),
+        )
+        assertTrue(summary.tripActive)
+        assertEquals(now - 20 * minute, summary.currentTripStartTs)
+        assertEquals(12.5, summary.currentTripKm!!, 1e-9)
+        assertEquals(45.0, summary.currentTripAvgSpeed!!, 1e-9)
+        assertEquals(6.6, summary.currentTripCons!!, 1e-9)
+        val json = org.json.JSONObject(summary.toJson())
+        assertEquals(48.85, json.getDouble(SummaryFields.LAT), 0.0)
+        assertEquals(1.85, json.getDouble(SummaryFields.PRICE_PER_LITER), 0.0)
+        // Le dernier trajet terminé reste celui d'hier.
+        assertEquals(now - day, json.getLong(SummaryFields.TRIP_START))
+    }
+
+    @Test fun sansTrajetOuvertNiPositionDemandee() {
+        val json = org.json.JSONObject(compute(trips = listOf(trip(now - day, 10.0, 6f))).toJson())
+        assertFalse(json.has(SummaryFields.CURRENT_START))
+        assertFalse(json.has(SummaryFields.LAT))
     }
 }

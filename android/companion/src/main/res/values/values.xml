@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">CANCitroen Compagnon</string>
+    <string name="widget_titre">Citroën C2</string>
+    <string name="widget_description">Carburant, autonomie et dernier trajet de la voiture.</string>
     <color name="ic_launcher_background">#0A0E14</color>
 </resources>

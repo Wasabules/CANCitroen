@@ -10,6 +10,7 @@ import com.geoffrey.cancitroen.history.entities.AggregatedSample
 import com.geoffrey.cancitroen.history.entities.RefuelEvent
 import com.geoffrey.cancitroen.history.entities.Trip
 import com.geoffrey.cancitroen.history.entities.VehicleSample
+import com.geoffrey.cancitroen.shared.TelemetryFormat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.OutputStream
@@ -31,7 +32,7 @@ object DataExport {
     private fun num(v: Number?, decimals: Int = 2) = v?.let { "%.${decimals}f".format(Locale.FRANCE, it.toDouble()) }.orEmpty()
 
     fun refuelsCsv(refuels: List<RefuelEvent>): String = buildString {
-        append("date;jauge_avant;jauge_apres;litres;montant_eur;prix_litre_eur;odometre_km;origine\n")
+        append(TelemetryFormat.Refuels.HEADER).append('\n')
         for (r in refuels) {
             val origin = when {
                 r.manual -> "manuel"
@@ -46,7 +47,7 @@ object DataExport {
     }
 
     fun tripsCsv(trips: List<Trip>): String = buildString {
-        append("debut;fin;distance_km;vitesse_moy_kmh;vitesse_max_kmh;conso_moy_l100;jauge_debut;jauge_fin\n")
+        append(TelemetryFormat.Trips.HEADER).append('\n')
         for (t in trips) {
             append(listOf(
                 date(t.startTs), date(t.endTs), num(t.distanceKm, 1), num(t.avgSpeedKmh, 0), num(t.maxSpeedKmh, 0),
@@ -57,8 +58,7 @@ object DataExport {
 
     /** Le numéro identifie la ligne : il permet de dédoublonner après un transfert interrompu. */
     fun samplesCsv(samples: List<VehicleSample>): String = buildString {
-        append("id;date;ts_ms;trajet;vitesse_kmh;regime_tr_min;jauge_pct;litres;autonomie_km;")
-        append("t_eau;t_huile;t_ext;niveau_huile_pct;odometre_km;conso_inst_l100\n")
+        append(TelemetryFormat.Samples.HEADER).append('\n')
         for (s in samples) {
             append(listOf(
                 s.id, dateSeconds(s.ts), s.ts, s.tripId ?: "", num(s.speedKmh, 1), num(s.rpm, 0), s.fuelPct ?: "",
@@ -69,8 +69,7 @@ object DataExport {
     }
 
     fun aggregatesCsv(aggregates: List<AggregatedSample>): String = buildString {
-        append("debut;ts_ms;duree_s;echantillons;vitesse_moy_kmh;vitesse_max_kmh;regime_moy;regime_max;jauge_pct;litres;")
-        append("t_eau_moy;t_eau_max;t_huile_moy;t_huile_max;t_ext_moy;t_ext_max;niveau_huile_pct;conso_moy_l100;odometre_km\n")
+        append(TelemetryFormat.Aggregates.HEADER).append('\n')
         for (a in aggregates) {
             append(listOf(
                 dateSeconds(a.ts), a.ts, a.bucketMs / 1000, a.count, num(a.speedAvg, 1), num(a.speedMax, 1), num(a.rpmAvg, 0),

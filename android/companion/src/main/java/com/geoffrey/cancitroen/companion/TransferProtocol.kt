@@ -1,5 +1,6 @@
 package com.geoffrey.cancitroen.companion
 
+import com.geoffrey.cancitroen.shared.LinkProtocol
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -7,8 +8,6 @@ import java.io.InputStream
 import java.security.MessageDigest
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
-import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
 import javax.net.ssl.X509TrustManager
 
 /** Réponse de l'Atoto : HTTP/1.0, la fin de connexion marque la fin du corps. */
@@ -61,11 +60,7 @@ object TransferProtocol {
     fun normalizeCode(typed: String): String = CODE_NOISE.replace(typed, "").uppercase()
 
     /** Prouve la connaissance du code sans l'envoyer, pour le certificat vu par ce téléphone. */
-    fun pairingProof(code: String, fingerprint: ByteArray): String {
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(code.toByteArray(), "HmacSHA256"))
-        return mac.doFinal(fingerprint).joinToString("") { "%02x".format(it) }
-    }
+    fun pairingProof(code: String, fingerprint: ByteArray): String = LinkProtocol.pairingProof(code, fingerprint)
 
     fun sha256(bytes: ByteArray): ByteArray = MessageDigest.getInstance("SHA-256").digest(bytes)
 

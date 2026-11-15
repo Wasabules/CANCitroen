@@ -82,4 +82,27 @@ class HomeAssistantTest {
         assertFalse(HaUrl.isLocal("192.169.0.1"))
         assertFalse(HaUrl.isLocal("300.1.1.1"))
     }
+
+    private fun stateOf(id: String, snapshot: HaSnapshot): Any? {
+        val updates = HaPayloads.updateStates(snapshot).getJSONArray("data")
+        for (i in 0 until updates.length()) {
+            val item = updates.getJSONObject(i)
+            if (item.getString("unique_id") == HaPayloads.UNIQUE_PREFIX + id) return item.get("state")
+        }
+        error("capteur inconnu : $id")
+    }
+
+    @Test fun trajetEnCoursSeulementVoitureJointe() {
+        val driving = JSONObject(full.toString()).put("tripActive", true)
+        assertEquals(true, stateOf("trajet_en_cours", HaSnapshot(driving, projecting = true, linked = true)))
+        // Contact coupé : l'Atoto ne pourra plus dire que le trajet est fini.
+        assertEquals(false, stateOf("trajet_en_cours", HaSnapshot(driving, projecting = false, linked = false)))
+    }
+
+    @Test fun liaisonEtDernierContact() {
+        assertEquals(true, stateOf("voiture_connectee", HaSnapshot(full, true, linked = true, contactTs = 0)))
+        assertEquals(false, stateOf("voiture_connectee", HaSnapshot(full, false)))
+        assertEquals(HaPayloads.isoTime(0), stateOf("dernier_contact", HaSnapshot(full, true, linked = true, contactTs = 0)))
+        assertEquals(JSONObject.NULL, stateOf("dernier_contact", HaSnapshot(full, false)))
+    }
 }

@@ -24,6 +24,7 @@ android/.kotlin/
 android/build/
 android/app/build/
 android/companion/build/
+android/shared/build/
 android/local.properties
 android/captures/
 .idea/

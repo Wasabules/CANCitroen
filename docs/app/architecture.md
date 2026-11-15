@@ -63,7 +63,9 @@ mode meme), `root/` (scripts du garde launcher, voir [launcher_root.md](launcher
 
 `App.get()` donne accès à `settings` (DataStore), `gpsTracker`, `historyDao` /
 `historyRepo`, `engineSynth`, `memeEngineRunner` et à un `audioScope`. Pas
-d'injection de dépendances : le projet est petit, un seul module.
+d'injection de dépendances : le projet est petit. Modules Gradle : `app` (l'Atoto), `companion`
+(le téléphone) et `shared`, le contrat entre les deux (protocole `LinkProtocol`, fichiers
+`TelemetryFormat`, résumé `SummaryFields`), en Kotlin pur testé en JVM.
 
 `App.onCreate` doit rester très court (chargement audio différé) : voir
 [démarrage à froid](#démarrage-à-froid-atoto).

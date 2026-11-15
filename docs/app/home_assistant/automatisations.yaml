@@ -35,6 +35,27 @@
         title: Niveau d'huile à contrôler
         message: Le dernier relevé indique {{ states('sensor.citroen_c2_niveau_huile') }} %.
 
+- id: cancitroen_trajet_termine
+  alias: "Voiture : bilan du trajet"
+  description: >-
+    Événement du compagnon à la fin d'un trajet : à l'arrivée (chiffres du dernier contact,
+    « provisoire »), ou quand l'Atoto clôt le trajet s'il le fait avant.
+  mode: queued
+  triggers:
+    - trigger: event
+      event_type: cancitroen_trajet_termine
+  actions:
+    - action: persistent_notification.create
+      data:
+        notification_id: voiture_trajet
+        title: Trajet terminé
+        message: >-
+          {% set t = trigger.event.data %}
+          {{ t.distance_km ~ ' km en ' if t.distance_km is defined else '' }}{{ t.duree_min }} min
+          {%- if t.conso_l100 is defined %}, {{ t.conso_l100 }} L/100 km{% endif %}
+          {%- if t.cout_eur is defined %}, environ {{ t.cout_eur }} €{% endif %}
+          {%- if t.co2_kg is defined %}, {{ t.co2_kg }} kg de CO₂{% endif %}.
+
 - id: cancitroen_plein_a_saisir
   alias: "Voiture : ticket de plein à saisir"
   description: Le plein détecté reste une estimation tant que le ticket n'est pas saisi sur l'autoradio.

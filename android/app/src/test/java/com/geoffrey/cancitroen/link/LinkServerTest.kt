@@ -15,7 +15,9 @@ class LinkServerTest {
 
     @Test fun telemetryRoutes() {
         assertEquals(Route.TelemetryStatus, LinkServer.routeOf("GET /telemetry/status HTTP/1.0"))
-        assertEquals(Route.TelemetrySummary, LinkServer.routeOf("GET /telemetry/summary HTTP/1.0"))
+        assertEquals(Route.TelemetrySummary(false), LinkServer.routeOf("GET /telemetry/summary HTTP/1.0"))
+        // La position ne part que si le téléphone la demande.
+        assertEquals(Route.TelemetrySummary(true), LinkServer.routeOf("GET /telemetry/summary?position=1 HTTP/1.0"))
         assertEquals(Route.TelemetrySamples(42, 100), LinkServer.routeOf("GET /telemetry/samples?after=42&limit=100 HTTP/1.0"))
         assertEquals(Route.TelemetrySamples(0, 5000), LinkServer.routeOf("GET /telemetry/samples?after=0&limit=999999 HTTP/1.0"))
         assertEquals(Route.TelemetrySamples(4, 10, 9), LinkServer.routeOf("GET /telemetry/samples?after=4&limit=10&upto=9 HTTP/1.0"))

@@ -69,24 +69,53 @@ du compagnon indique le refus de Cloudflare.
 | `prix_du_litre` | €/L |
 | `distance_du_mois`, `trajets_du_mois`, `conso_du_mois`, `carburant_du_mois`, `depense_du_mois` | mois en cours |
 
-Et `binary_sensor.citroen_c2_android_auto`, `binary_sensor.citroen_c2_trajet_en_cours`.
+| `dernier_contact` | dernière réponse de l'Atoto au téléphone (diagnostic) |
 
-`device_tracker.citroen_c2` reste « inconnu » : `mobile_app` le crée d'office, et aucune position
-n'est envoyée. On peut le désactiver. La précision d'affichage se règle dans chaque entité.
+Et en `binary_sensor.citroen_c2_...` : `voiture_connectee` (l'Atoto répond au téléphone),
+`android_auto`, `trajet_en_cours` (seulement voiture connectée : hors de portée, le compagnon ne
+peut plus savoir que le trajet continue).
+
+`device_tracker.citroen_c2` reste « inconnu » tant que la position de la voiture n'est pas
+partagée (compagnon, Réglages → « Position de la voiture », désactivé par défaut). Partagée, il
+suit le GPS de l'Atoto pendant les trajets (`update_location`, à chaque déplacement) et garde le
+dernier point : où la voiture est garée, et ses trajets dans l'historique de la carte. La précision
+d'affichage se règle dans chaque entité.
+
+## Événements
+
+Pour les automatisations, le compagnon envoie sur le bus de Home Assistant (`fire_event`) :
+
+| Événement | Quand | Données |
+|---|---|---|
+| `cancitroen_trajet_termine` | à l'arrivée (l'Atoto ne répond plus), ou quand l'Atoto clôt le trajet s'il le fait avant | `depart`, `arrivee`, `duree_min`, `distance_km`, `conso_l100`, `vitesse_moyenne_kmh`, `vitesse_max_kmh`, `litres`, `cout_eur`, `co2_kg`, `provisoire` |
+| `cancitroen_plein` | plein détecté par l'Atoto | `date`, `litres`, `montant_eur`, `prix_litre_eur`, `estimation` |
+
+Chaque trajet et chaque plein n'est annoncé qu'une fois, et rien n'est annoncé pour l'historique
+déjà présent à la première connexion. `provisoire` : chiffres du dernier contact, l'Atoto n'ayant
+pas encore clos le trajet (il le fera au démarrage suivant, sans nouvel événement). Serveur
+injoignable : les événements attendent (20 au plus) et partent au premier envoi réussi. Exemple :
+« Voiture : bilan du trajet » dans [`automatisations.yaml`](home_assistant/automatisations.yaml).
 
 ## Quand les valeurs changent
 
-Le compagnon publie à la fin de chaque transfert et quand Android Auto change d'état, vu par sa
-tâche toutes les 15 min. Serveur injoignable : le dernier état attend et part à la prochaine
-tentative qui l'atteint.
+Pendant un trajet, le suivi du compagnon ([détail](compagnon.md#suivi-pendant-le-trajet)) interroge
+l'Atoto toutes les 30 s et publie à chaque changement, et toutes les 5 min au moins. À la fin du
+trajet (l'Atoto ne répond plus depuis 90 s), il publie `voiture_connectee`, `android_auto` et
+`trajet_en_cours` à « off ». Serveur injoignable : envois espacés (30 s, puis jusqu'à 5 min), le
+dernier état attend et part au premier essai qui l'atteint ; hors trajet, la vérification
+périodique s'en charge.
+
+Les requêtes vers une adresse publique passent par un réseau validé vers Internet (en général le
+mobile), même quand le téléphone a pris le Wi-Fi de l'Atoto, qui n'a pas Internet, comme réseau par
+défaut. Une adresse locale suit le réseau par défaut.
 
 - **Sur la route**, il faut un serveur joignable depuis Internet (Nabu Casa, accès distant).
   L'Atoto n'a pas Internet, c'est le réseau mobile du téléphone qui sert. Avec une adresse
   locale seule, tout part au retour à la maison.
 - **Le dernier trajet arrive avec du retard.** Il se ferme à l'arrêt du moteur, quand le Wi-Fi
   d'Android Auto disparaît : ses chiffres définitifs partent à la session suivante.
-- **Ce n'est pas du temps réel** : pas de vitesse ni de régime, inutiles à 15 min d'intervalle,
-  et pas d'automatisation qui exige une réaction immédiate, comme ouvrir un portail.
+- **Toutes les 30 s, pas en temps réel** : pas de vitesse ni de régime, et pas d'automatisation
+  qui exige une réaction immédiate, comme ouvrir un portail.
 
 ## Fiabilité des valeurs
 
@@ -104,7 +133,13 @@ les réglages de Home Assistant.
 
 ## Vérifié
 
-Contre un vrai Home Assistant 2026.10.4 en conteneur. Depuis Android 16 : les 20 capteurs et leurs
+Compagnon 0.3.0, contre Home Assistant 2026.11.1 en conteneur depuis Android 16 : les 22 capteurs,
+mises à jour toutes les 30 s pendant un trajet simulé, fin de trajet publiée, serveur figé 2 min puis
+repris (voir [compagnon](compagnon.md#vérifié-et-ce-qui-ne-lest-pas)). Compagnon 0.4.0 : position
+dans `device_tracker.citroen_c2` et son déplacement, événement de fin de trajet, automatisation
+« bilan du trajet » déclenchée avec et sans distance.
+
+Avant, contre un vrai Home Assistant 2026.10.4 en conteneur. Depuis Android 16 : les 20 capteurs et leurs
 unités, faux jeton, `http` public refusé, panne puis reprise par la tâche, redémarrage du serveur
 (valeurs conservées), intégration supprimée. Depuis Android 10 : connexion et publication. En appels
 directs à l'API : réinscription du même appareil, sans entités `_2`. Les quatre automatisations

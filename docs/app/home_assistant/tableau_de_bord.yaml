@@ -35,8 +35,8 @@ views:
             name: Dans le réservoir
             color: green
           - type: tile
-            entity: binary_sensor.citroen_c2_android_auto
-            name: Android Auto
+            entity: binary_sensor.citroen_c2_voiture_connectee
+            name: Voiture connectée
             color: blue
           - type: tile
             entity: binary_sensor.citroen_c2_trajet_en_cours
@@ -50,6 +50,11 @@ views:
           - type: tile
             entity: sensor.citroen_c2_dernier_releve
             name: Dernier relevé
+            grid_options:
+              columns: 12
+          - type: tile
+            entity: sensor.citroen_c2_dernier_contact
+            name: Dernier contact avec l'Atoto
             grid_options:
               columns: 12
       - type: grid

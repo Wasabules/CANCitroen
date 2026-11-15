@@ -24,9 +24,10 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /**
- * Transfert automatique, seulement pendant Android Auto. Une tâche périodique, qui survit
- * au redémarrage du téléphone, regarde si la projection est active ; la diffusion
- * d'Android Auto la devance quand elle arrive jusqu'à l'app.
+ * Filet de sécurité du suivi ([CarSessionService]), que lancent d'abord le Bluetooth de la
+ * voiture et Android Auto. Une tâche périodique, qui survit au redémarrage du téléphone,
+ * cherche l'Atoto : s'il répond, elle lance le suivi ; sinon elle renvoie à Home Assistant
+ * l'état qui n'aurait pas pu partir (fin de trajet sans réseau, par exemple).
  *
  * Pas de réveil sur l'arrivée du Wi-Fi : un `registerNetworkCallback` à PendingIntent est
  * retiré par le système 5 s après son premier envoi (observé sur Android 16).
@@ -57,6 +58,7 @@ object TransferScheduler {
         }
     }
 
+    /** Quand le suivi est refusé par Android : une seule passe, transfert puis Home Assistant. */
     fun onCarConnectionChanged(context: Context) {
         val prefs = TransferPrefs(context)
         val now = System.currentTimeMillis()
@@ -102,16 +104,33 @@ class TransferJobService : JobService() {
 
     override fun onStartJob(params: JobParameters): Boolean {
         stopped = false
-        thread(name = "Transfert") {
-            val projecting = TransferScheduler.isProjecting(this)
-            val at = SimpleDateFormat("dd/MM HH:mm:ss", Locale.FRANCE).format(Date())
-            TransferPrefs(this).lastCheck = "$at, Android Auto ${if (projecting) "connecté" else "non connecté"}"
-            val prefs = TransferPrefs(this)
-            if (projecting && prefs.auto && prefs.paired) TelemetrySync.run(this) { stopped }
-            HomeAssistant.publish(this, projecting)
+        if (CarSessionService.status.running) return false
+        thread(name = "Vérification") {
+            check()
             jobFinished(params, false)
         }
         return true
+    }
+
+    private fun check() {
+        val prefs = TransferPrefs(this)
+        val projecting = TransferScheduler.isProjecting(this)
+        val poll = if (prefs.paired) TelemetrySync.poll(this, null) else TelemetrySync.Poll.Absent
+        val at = SimpleDateFormat("dd/MM HH:mm:ss", Locale.FRANCE).format(Date())
+        val atoto = if (poll is TelemetrySync.Poll.Answered) "Atoto joint" else "Atoto hors de portée"
+        prefs.lastCheck = "$at, $atoto, Android Auto ${if (projecting) "connecté" else "non connecté"}"
+        if (poll !is TelemetrySync.Poll.Answered) {
+            // Hors de la voiture : ce qui n'a pas pu partir en fin de trajet part maintenant.
+            HomeAssistant.saveLink(this, false, null)
+            HomeAssistant.publish(this, projecting)
+            return
+        }
+        if (CarSessionService.start(this, "vérification périodique")) return
+        // Suivi refusé par Android : une seule passe.
+        HomeAssistant.saveSummary(this, poll.summary)
+        HomeAssistant.saveLink(this, true, System.currentTimeMillis())
+        if (prefs.auto) TelemetrySync.run(this) { stopped }
+        HomeAssistant.publish(this, true)
     }
 
     override fun onStopJob(params: JobParameters): Boolean {
@@ -120,10 +139,12 @@ class TransferJobService : JobService() {
     }
 }
 
-/** N'importe quelle app peut l'envoyer : elle ne fait que déclencher la vérification d'Android Auto. */
+/** N'importe quelle app peut l'envoyer : au pire, le suivi cherche l'Atoto quelques minutes. */
 class TransferReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == CarConnection.ACTION_CAR_CONNECTION_UPDATED) {
+        if (intent.action == CarConnection.ACTION_CAR_CONNECTION_UPDATED &&
+            !CarSessionService.start(context, "Android Auto")
+        ) {
             TransferScheduler.onCarConnectionChanged(context)
         }
     }

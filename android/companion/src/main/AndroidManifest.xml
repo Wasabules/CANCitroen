@@ -6,6 +6,19 @@
     <!-- Exigée par la tâche périodique persistante. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- Suivi pendant le trajet : service au premier plan de type « appareil connecté » (l'Atoto),
+         dont CHANGE_NETWORK_STATE est le prérequis, et téléphone tenu éveillé le temps du trajet. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Sans optimisation de batterie, Android laisse le suivi démarrer depuis l'arrière-plan. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Connexion Bluetooth de la voiture : le signal qui lance le suivi. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
     <!-- CarConnection interroge le fournisseur d'Android Auto. -->
     <queries>
         <package android:name="com.google.android.projection.gearhead" />
@@ -31,6 +44,11 @@
         </activity>
 
         <service
+            android:name=".CarSessionService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
+        <service
             android:name=".TransferJobService"
             android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE" />
@@ -42,5 +60,53 @@
                 <action android:name="androidx.car.app.connection.action.CAR_CONNECTION_UPDATED" />
             </intent-filter>
         </receiver>
+
+        <!-- Envoyée par l'app Bluetooth du système : exportée, sinon elle n'arrive pas. -->
+        <receiver
+            android:name=".BluetoothReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
+                <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Widget de l'écran d'accueil : mis à jour par le système, non exporté. -->
+        <receiver
+            android:name=".CarWidget"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_voiture_info" />
+        </receiver>
+
+        <!-- Écran dans Android Auto (bibliothèque Car App) ; HostValidator n'accepte qu'Android Auto. -->
+        <service
+            android:name=".CarStatusService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService" />
+                <category android:name="androidx.car.app.category.IOT" />
+            </intent-filter>
+        </service>
+
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+        <meta-data
+            android:name="androidx.car.app.minCarApiLevel"
+            android:value="1" />
     </application>
 </manifest>

@@ -4,6 +4,7 @@ import com.geoffrey.cancitroen.history.DataExport
 import com.geoffrey.cancitroen.history.VehicleSummary
 import com.geoffrey.cancitroen.history.dao.HistoryDao
 import com.geoffrey.cancitroen.settings.AppSettingsRepository
+import com.geoffrey.cancitroen.system.GpsFix
 import kotlinx.coroutines.flow.first
 
 /** Ce que le téléphone associé peut lire de l'historique. */
@@ -24,8 +25,8 @@ interface TelemetrySource {
     suspend fun inventory(): String
     suspend fun table(table: Table): String
 
-    /** L'état de la voiture en JSON, pour Home Assistant. */
-    suspend fun summary(): String
+    /** L'état de la voiture en JSON, pour le compagnon ; [withPosition] : avec le dernier point GPS. */
+    suspend fun summary(withPosition: Boolean = false): String
 
     /** Renvoie le nombre d'échantillons nouvellement confirmés. */
     suspend fun ack(id: Long): Long
@@ -54,6 +55,7 @@ class HistoryTelemetrySource(
     private val dao: HistoryDao,
     private val settings: AppSettingsRepository,
     private val fingerprint: ByteArray,
+    private val position: () -> GpsFix? = { null },
 ) : TelemetrySource {
 
     override suspend fun pair(proof: String): String? {
@@ -95,14 +97,21 @@ class HistoryTelemetrySource(
         TelemetrySource.Table.REFUELS -> DataExport.refuelsCsv(dao.allRefuelsOnce())
     }
 
-    override suspend fun summary(): String = VehicleSummary.compute(
-        now = System.currentTimeMillis(),
-        recent = dao.latestSamples(VehicleSummary.RECENT_SAMPLES).reversed(),
-        lastAggregate = dao.latestAggregate(),
-        trips = dao.allTripsOnce(),
-        refuels = dao.allRefuelsOnce(),
-        consumptionFactor = settings.flow.first().fuel.consumptionFactor,
-    ).toJson()
+    override suspend fun summary(withPosition: Boolean): String {
+        val trips = dao.allTripsOnce()
+        val fuel = settings.flow.first().fuel
+        return VehicleSummary.compute(
+            now = System.currentTimeMillis(),
+            recent = dao.latestSamples(VehicleSummary.RECENT_SAMPLES).reversed(),
+            lastAggregate = dao.latestAggregate(),
+            trips = trips,
+            refuels = dao.allRefuelsOnce(),
+            consumptionFactor = fuel.consumptionFactor,
+            currentCounters = trips.lastOrNull()?.takeIf { it.endTs == null }?.let { dao.tripResumeCounters(it.id) },
+            pricePerLiter = fuel.pricePerLiter,
+            position = if (withPosition) position() else null,
+        ).toJson()
+    }
 
     override suspend fun ack(id: Long): Long {
         val before = settings.flow.first().dev.transferAckedId

@@ -18,6 +18,12 @@ object PermissionsHelper {
             context, Manifest.permission.ACCESS_FINE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
 
+    /** « Toujours autoriser » : GPS lu même quand Android Auto occupe l'écran. */
+    fun isBackgroundLocationGranted(context: Context): Boolean =
+        ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_BACKGROUND_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
     fun isNotificationGranted(context: Context): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
         return ContextCompat.checkSelfPermission(

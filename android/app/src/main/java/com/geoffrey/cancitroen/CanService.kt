@@ -340,7 +340,7 @@ class CanService : Service() {
                     LinkServer.configure(
                         packageManager.getPackageInfo(packageName, 0).versionName.orEmpty(),
                         probe,
-                        identity?.let { HistoryTelemetrySource(App.get().historyDao, App.get().settings, it.fingerprint) },
+                        identity?.let { HistoryTelemetrySource(App.get().historyDao, App.get().settings, it.fingerprint) { App.get().gpsTracker.freshFix() } },
                         identity?.serverSockets,
                     )
                     if (transfer && identity == null) LinkServer.reportError("certificat indisponible")

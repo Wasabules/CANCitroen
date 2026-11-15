@@ -3,6 +3,7 @@ package com.geoffrey.cancitroen.companion
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import com.geoffrey.cancitroen.shared.LinkProtocol
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.util.zip.GZIPInputStream
@@ -21,7 +22,7 @@ class AtotoClient(private val route: AtotoRoute, private val pin: ByteArray?, pr
         val trust = PinnedTrustManager(null)
         return open(trust).use { socket ->
             val proof = TransferProtocol.pairingProof(code, trust.seen ?: throw IOException("certificat non vu"))
-            send(socket, "POST", "/telemetry/pair?proof=$proof")
+            send(socket, "POST", "${LinkProtocol.PAIR}?proof=$proof")
             val answer = TransferProtocol.parseAnswer(socket.inputStream)
             if (answer.status == 200) answer.body.toString(Charsets.US_ASCII) to trust.seen!! else null
         }
@@ -61,7 +62,7 @@ class AtotoClient(private val route: AtotoRoute, private val pin: ByteArray?, pr
     }
 
     companion object {
-        const val TLS_PORT = 8766
+        const val TLS_PORT = LinkProtocol.TLS_PORT
         private const val CONNECT_TIMEOUT_MS = 2_000
         private const val IO_TIMEOUT_MS = 20_000
 

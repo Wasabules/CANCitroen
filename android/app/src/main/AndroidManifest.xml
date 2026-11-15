@@ -15,6 +15,9 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Position de la voiture pour le compagnon (désactivée par défaut côté téléphone) : pendant
+         Android Auto, l'app n'est plus à l'écran, et Android 10 ne donne alors le GPS qu'avec elle. -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
 

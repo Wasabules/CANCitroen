@@ -15,8 +15,8 @@ android {
         applicationId = "com.geoffrey.cancitroen"
         minSdk = 29              // Android 10 (Atoto A6PF tourne >= 10)
         targetSdk = 36
-        versionCode = 38
-        versionName = "0.1.38"
+        versionCode = 39
+        versionName = "0.1.39"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -95,6 +95,7 @@ room {
 }
 
 dependencies {
+    implementation(project(":shared"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
@@ -116,6 +117,8 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
 
     testImplementation(libs.junit)
+    // Android ne fournit qu'une coquille vide d'org.json aux tests JVM (résumé pour le compagnon).
+    testImplementation(libs.json)
 
     // Migrations et rétention, sur une vraie base (voir docs/app/developpement.md).
     androidTestImplementation(libs.androidx.test.runner)

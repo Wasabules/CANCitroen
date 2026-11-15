@@ -1,5 +1,6 @@
 package com.geoffrey.cancitroen.companion
 
+import com.geoffrey.cancitroen.shared.SummaryFields as F
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -20,8 +21,16 @@ class HaSensor(
     val state: (HaSnapshot) -> Any?,
 )
 
-/** Le résumé de l'Atoto, et ce que seul le téléphone sait : Android Auto est-il connecté ? */
-class HaSnapshot(val summary: JSONObject, val projecting: Boolean) {
+/**
+ * Le résumé de l'Atoto, et ce que seul le téléphone sait : Android Auto est-il connecté,
+ * l'Atoto répond-il ([linked]) et quand a-t-il répondu pour la dernière fois ([contactTs]) ?
+ */
+class HaSnapshot(
+    val summary: JSONObject,
+    val projecting: Boolean,
+    val linked: Boolean = false,
+    val contactTs: Long? = null,
+) {
     fun number(key: String): Double? = if (summary.isNull(key)) null else summary.optDouble(key).takeUnless { it.isNaN() }
     fun rounded(key: String, decimals: Int): Double? = number(key)?.let { HaPayloads.round(it, decimals) }
     fun whole(key: String): Long? = number(key)?.toLong()
@@ -35,33 +44,38 @@ object HaPayloads {
     private fun fuel(decimals: Int = 2) = { key: String -> { s: HaSnapshot -> s.rounded(key, decimals) } }
 
     val sensors: List<HaSensor> = listOf(
-        HaSensor("jauge", "Jauge", "mdi:gas-station", "%", stateClass = "measurement") { it.whole("fuelPct") },
-        HaSensor("carburant", "Carburant", "mdi:fuel", "L", "volume_storage", "measurement", state = fuel(1)("fuelLiters")),
-        HaSensor("autonomie", "Autonomie", "mdi:map-marker-distance", "km", "distance", "measurement") { it.whole("rangeKm") },
-        HaSensor("odometre", "Odomètre", "mdi:counter", "km", "distance", "total_increasing") { it.rounded("odoKm", 1) },
-        HaSensor("temperature_eau", "Température eau", "mdi:coolant-temperature", "°C", "temperature", "measurement") { it.whole("tCoolant") },
-        HaSensor("temperature_huile", "Température huile", "mdi:oil-temperature", "°C", "temperature", "measurement") { it.whole("tOil") },
-        HaSensor("temperature_exterieure", "Température extérieure", "mdi:thermometer", "°C", "temperature", "measurement") { it.whole("tExt") },
-        HaSensor("niveau_huile", "Niveau huile", "mdi:oil-level", "%", stateClass = "measurement") { it.whole("oilLevelPct") },
-        HaSensor("dernier_releve", "Dernier relevé", "mdi:clock-check-outline", deviceClass = "timestamp", diagnostic = true) { it.time("lastSeenTs") },
+        HaSensor("jauge", "Jauge", "mdi:gas-station", "%", stateClass = "measurement") { it.whole(F.FUEL_PCT) },
+        HaSensor("carburant", "Carburant", "mdi:fuel", "L", "volume_storage", "measurement", state = fuel(1)(F.FUEL_LITERS)),
+        HaSensor("autonomie", "Autonomie", "mdi:map-marker-distance", "km", "distance", "measurement") { it.whole(F.RANGE) },
+        HaSensor("odometre", "Odomètre", "mdi:counter", "km", "distance", "total_increasing") { it.rounded(F.ODO, 1) },
+        HaSensor("temperature_eau", "Température eau", "mdi:coolant-temperature", "°C", "temperature", "measurement") { it.whole(F.COOLANT) },
+        HaSensor("temperature_huile", "Température huile", "mdi:oil-temperature", "°C", "temperature", "measurement") { it.whole(F.OIL) },
+        HaSensor("temperature_exterieure", "Température extérieure", "mdi:thermometer", "°C", "temperature", "measurement") { it.whole(F.OUTSIDE) },
+        HaSensor("niveau_huile", "Niveau huile", "mdi:oil-level", "%", stateClass = "measurement") { it.whole(F.OIL_LEVEL) },
+        HaSensor("dernier_releve", "Dernier relevé", "mdi:clock-check-outline", deviceClass = "timestamp", diagnostic = true) { it.time(F.LAST_SEEN) },
         HaSensor(
             "dernier_trajet", "Dernier trajet", "mdi:map-marker-path", "km", "distance", "measurement",
             attributes = ::tripAttributes,
-        ) { it.rounded("tripKm", 1) },
-        HaSensor("conso_dernier_trajet", "Conso dernier trajet", "mdi:speedometer", "L/100km", stateClass = "measurement") { it.rounded("tripCons", 1) },
+        ) { it.rounded(F.TRIP_KM, 1) },
+        HaSensor("conso_dernier_trajet", "Conso dernier trajet", "mdi:speedometer", "L/100km", stateClass = "measurement") { it.rounded(F.TRIP_CONS, 1) },
         HaSensor(
             "dernier_plein", "Dernier plein", "mdi:gas-station-outline", deviceClass = "timestamp",
             attributes = ::refuelAttributes,
-        ) { it.time("refuelTs") },
-        HaSensor("prix_litre", "Prix du litre", "mdi:currency-eur", "EUR/L", stateClass = "measurement") { it.rounded("refuelPrice", 3) },
-        HaSensor("distance_mois", "Distance du mois", "mdi:road-variant", "km", "distance", "total_increasing") { it.rounded("monthKm", 1) },
-        HaSensor("trajets_mois", "Trajets du mois", "mdi:car-multiple", stateClass = "total_increasing") { it.whole("monthTrips") },
-        HaSensor("conso_mois", "Conso du mois", "mdi:speedometer-medium", "L/100km", stateClass = "measurement") { it.rounded("monthCons", 1) },
-        HaSensor("carburant_mois", "Carburant du mois", "mdi:fuel", "L", "volume", "total_increasing") { it.rounded("monthLiters", 1) },
-        HaSensor("depense_mois", "Dépense du mois", "mdi:cash-multiple", "EUR", "monetary", "total") { it.rounded("monthCost", 2) },
+        ) { it.time(F.REFUEL_TS) },
+        HaSensor("prix_litre", "Prix du litre", "mdi:currency-eur", "EUR/L", stateClass = "measurement") { it.rounded(F.REFUEL_PRICE, 3) },
+        HaSensor("distance_mois", "Distance du mois", "mdi:road-variant", "km", "distance", "total_increasing") { it.rounded(F.MONTH_KM, 1) },
+        HaSensor("trajets_mois", "Trajets du mois", "mdi:car-multiple", stateClass = "total_increasing") { it.whole(F.MONTH_TRIPS) },
+        HaSensor("conso_mois", "Conso du mois", "mdi:speedometer-medium", "L/100km", stateClass = "measurement") { it.rounded(F.MONTH_CONS, 1) },
+        HaSensor("carburant_mois", "Carburant du mois", "mdi:fuel", "L", "volume", "total_increasing") { it.rounded(F.MONTH_LITERS, 1) },
+        HaSensor("depense_mois", "Dépense du mois", "mdi:cash-multiple", "EUR", "monetary", "total") { it.rounded(F.MONTH_COST, 2) },
         HaSensor("android_auto", "Android Auto", "mdi:car-connected", deviceClass = "connectivity", binary = true) { it.projecting },
+        // Hors de portée de l'Atoto, on ne sait plus rien du trajet : il n'est plus « en cours ».
         HaSensor("trajet_en_cours", "Trajet en cours", "mdi:car-traction-control", deviceClass = "moving", binary = true) {
-            it.summary.optBoolean("tripActive")
+            it.linked && it.summary.optBoolean(F.TRIP_ACTIVE)
+        },
+        HaSensor("voiture_connectee", "Voiture connectée", "mdi:car-wireless", deviceClass = "connectivity", binary = true) { it.linked },
+        HaSensor("dernier_contact", "Dernier contact", "mdi:access-point-network", deviceClass = "timestamp", diagnostic = true) {
+            it.contactTs?.let(HaPayloads::isoTime)
         },
     )
 
@@ -115,25 +129,50 @@ object HaPayloads {
 
     private fun tripAttributes(summary: JSONObject): Map<String, Any?> {
         val snapshot = HaSnapshot(summary, false)
-        val start = snapshot.whole("tripStartTs")
-        val end = snapshot.whole("tripEndTs")
+        val start = snapshot.whole(F.TRIP_START)
+        val end = snapshot.whole(F.TRIP_END)
         return mapOf(
-            "depart" to snapshot.time("tripStartTs"),
-            "arrivee" to snapshot.time("tripEndTs"),
+            "depart" to snapshot.time(F.TRIP_START),
+            "arrivee" to snapshot.time(F.TRIP_END),
             "duree_min" to if (start != null && end != null) (end - start) / 60_000 else null,
-            "vitesse_moyenne_kmh" to snapshot.rounded("tripAvgSpeed", 0),
-            "vitesse_max_kmh" to snapshot.rounded("tripMaxSpeed", 0),
+            "vitesse_moyenne_kmh" to snapshot.rounded(F.TRIP_AVG_SPEED, 0),
+            "vitesse_max_kmh" to snapshot.rounded(F.TRIP_MAX_SPEED, 0),
         )
     }
 
     private fun refuelAttributes(summary: JSONObject): Map<String, Any?> {
         val snapshot = HaSnapshot(summary, false)
         return mapOf(
-            "litres" to snapshot.rounded("refuelLiters", 2),
-            "montant_eur" to snapshot.rounded("refuelCost", 2),
-            "prix_litre_eur" to snapshot.rounded("refuelPrice", 3),
-            "estimation" to if (summary.has("refuelTs")) summary.optBoolean("refuelEstimated") else null,
+            "litres" to snapshot.rounded(F.REFUEL_LITERS, 2),
+            "montant_eur" to snapshot.rounded(F.REFUEL_COST, 2),
+            "prix_litre_eur" to snapshot.rounded(F.REFUEL_PRICE, 3),
+            "estimation" to if (summary.has(F.REFUEL_TS)) summary.optBoolean(F.REFUEL_ESTIMATED) else null,
         )
+    }
+
+    /** Un événement sur le bus de Home Assistant, pour les automatisations. */
+    fun fireEvent(type: String, data: JSONObject): JSONObject = JSONObject().apply {
+        put("type", "fire_event")
+        put("data", JSONObject().put("event_type", type).put("event_data", data))
+    }
+
+    /**
+     * La position de la voiture pour `device_tracker.citroen_c2`, si le résumé en porte une.
+     * La précision est exigée par Home Assistant : 10 m par défaut, celle d'un GPS dégagé.
+     */
+    fun location(summary: JSONObject): JSONObject? {
+        if (!summary.has(F.LAT) || !summary.has(F.LON)) return null
+        val lat = summary.optDouble(F.LAT)
+        val lon = summary.optDouble(F.LON)
+        if (lat.isNaN() || lon.isNaN()) return null
+        return JSONObject().apply {
+            put("type", "update_location")
+            put("data", JSONObject().apply {
+                put("gps", JSONArray().put(round(lat, 6)).put(round(lon, 6)))
+                put("gps_accuracy", summary.optDouble(F.GPS_ACCURACY).takeUnless { it.isNaN() }?.toInt() ?: 10)
+                summary.optDouble(F.GPS_BEARING).takeUnless { it.isNaN() }?.let { put("course", it.toInt()) }
+            })
+        }
     }
 
     fun round(value: Double, decimals: Int): Double {

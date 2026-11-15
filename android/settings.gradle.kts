@@ -16,4 +16,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "CANCitroen"
-include(":app", ":companion")
+include(":app", ":companion", ":shared")

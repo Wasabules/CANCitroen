@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Build
+import com.geoffrey.cancitroen.shared.LinkProtocol
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
@@ -172,7 +173,7 @@ class LinkTest(context: Context, private val log: (String) -> Unit) {
 
     private fun httpPing(factory: SocketFactory, ip: String): Ping = try {
         val started = System.nanoTime()
-        val answer = openRequest(factory, ip, "/ping").use { socket ->
+        val answer = openRequest(factory, ip, LinkProtocol.PING).use { socket ->
             readUpTo(socket.getInputStream(), MAX_PING_BYTES).toString(Charsets.ISO_8859_1)
         }
         val ms = (System.nanoTime() - started) / 1_000_000
@@ -198,7 +199,7 @@ class LinkTest(context: Context, private val log: (String) -> Unit) {
 
     private fun httpSpeed(factory: SocketFactory, ip: String): String = try {
         val started = System.nanoTime()
-        val bytes = openRequest(factory, ip, "/blob?kb=$SPEED_TEST_KB").use { socket ->
+        val bytes = openRequest(factory, ip, "${LinkProtocol.BLOB}?kb=$SPEED_TEST_KB").use { socket ->
             val input = socket.getInputStream()
             val buffer = ByteArray(16 * 1024)
             var total = 0L
@@ -258,7 +259,7 @@ class LinkTest(context: Context, private val log: (String) -> Unit) {
     }
 
     private companion object {
-        const val PORT = 8765
+        const val PORT = LinkProtocol.PROBE_PORT
         const val ATOTO_MARK = "\"app\":\"CANCitroen\""
         const val PING_REQUEST = "printf 'GET /ping HTTP/1.0\\r\\n\\r\\n'"
         const val MAX_CANDIDATES = 6

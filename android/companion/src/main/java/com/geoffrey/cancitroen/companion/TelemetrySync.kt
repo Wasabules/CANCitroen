@@ -1,6 +1,8 @@
 package com.geoffrey.cancitroen.companion
 
 import android.content.Context
+import com.geoffrey.cancitroen.shared.LinkProtocol
+import com.geoffrey.cancitroen.shared.TelemetryFormat
 import org.json.JSONException
 import org.json.JSONObject
 import java.io.IOException
@@ -39,6 +41,34 @@ class TransferPrefs(context: Context) {
         get() = prefs.getLong("premier_echantillon", 0)
         set(value) = prefs.edit().putLong("premier_echantillon", value).apply()
 
+    /** Adresse Bluetooth de la voiture, apprise au premier trajet suivi ; vide tant qu'inconnue. */
+    var carBluetooth: String
+        get() = prefs.getString("bluetooth_voiture", "").orEmpty()
+        set(value) = prefs.edit().putString("bluetooth_voiture", value).apply()
+
+    /** Dernier appareil Bluetooth connecté, et quand : la voiture se reconnaît après coup. */
+    var lastBluetooth: String
+        get() = prefs.getString("dernier_bluetooth", "").orEmpty()
+        set(value) = prefs.edit().putString("dernier_bluetooth", value).apply()
+    var lastBluetoothMs: Long
+        get() = prefs.getLong("dernier_bluetooth_ms", 0)
+        set(value) = prefs.edit().putLong("dernier_bluetooth_ms", value).apply()
+
+    /** Carburant de la voiture, pour le CO₂ des trajets. */
+    var fuelType: FuelType
+        get() = FuelType.entries.firstOrNull { it.name == prefs.getString("carburant", null) } ?: FuelType.PETROL
+        set(value) = prefs.edit().putString("carburant", value.name).apply()
+
+    /** La position GPS de l'Atoto vient avec le résumé : carte dans l'app et Home Assistant. Choix explicite. */
+    var shareCarPosition: Boolean
+        get() = prefs.getBoolean("position_voiture", false)
+        set(value) = prefs.edit().putBoolean("position_voiture", value).apply()
+
+    /** Durée de conservation du détail sur le téléphone ; tout par défaut, comme avant le réglage. */
+    var retention: Retention
+        get() = Retention.entries.firstOrNull { it.name == prefs.getString("conservation", null) } ?: Retention.ALL
+        set(value) = prefs.edit().putString("conservation", value.name).apply()
+
     fun snapshotVersion(name: String): String? = prefs.getString("version_$name", null)
     fun saveSnapshotVersion(name: String, version: String?) = prefs.edit().putString("version_$name", version).apply()
 
@@ -62,9 +92,45 @@ class TransferPrefs(context: Context) {
 
 /** Associe le téléphone et récupère ce qui manque. Bloquant : hors du thread principal. */
 object TelemetrySync {
-    class Outcome(val reachedAtoto: Boolean, val message: String)
+    /** [ok] : le transfert est allé au bout. */
+    class Outcome(val reachedAtoto: Boolean, val message: String, val ok: Boolean = false)
 
-    private const val BATCH = 5_000
+    sealed interface Poll {
+        class Answered(val summary: String, val route: AtotoRoute) : Poll
+        /** Aucune voie ne mène à l'Atoto associé : hors de la voiture, ou Wi-Fi pas encore monté. */
+        data object Absent : Poll
+        /** L'Atoto répond mais refuse : inutile d'insister pendant cette session. */
+        class Refused(val reason: String) : Poll
+    }
+
+    /**
+     * Une interrogation légère de l'Atoto, pour le suivi : son résumé, sans rien écrire.
+     * [preferred], la voie qui a répondu la dernière fois, est essayée d'abord.
+     */
+    fun poll(context: Context, preferred: AtotoRoute?): Poll {
+        val prefs = TransferPrefs(context)
+        val token = prefs.token
+        val pin = prefs.pin
+        if (token == null || pin == null) return Poll.Refused("téléphone non associé")
+        val others = AtotoClient.routes(context, prefs.manualIp).filter { it.label != preferred?.label }
+        for (route in listOfNotNull(preferred) + others) {
+            val answer = try {
+                AtotoClient(route, pin, token).request("GET", summaryPath(context))
+            } catch (_: IOException) {
+                // Certificat inconnu compris : un autre appareil, rien ne lui a été envoyé.
+                continue
+            }
+            return when (answer.status) {
+                200 -> Poll.Answered(answer.body.toString(Charsets.UTF_8), route)
+                401 -> Poll.Refused("l'Atoto ne reconnaît plus ce téléphone, à associer de nouveau")
+                403 -> Poll.Refused("transfert désactivé dans CANCitroen sur l'Atoto")
+                else -> Poll.Refused("réponse ${answer.status} de l'Atoto")
+            }
+        }
+        return Poll.Absent
+    }
+
+    private const val BATCH = LinkProtocol.MAX_BATCH
     private val running = AtomicBoolean(false)
 
     fun pair(context: Context, typedCode: String): String {
@@ -85,18 +151,27 @@ object TelemetrySync {
         return failure
     }
 
-    /** [stopped] interrompt entre deux lots : ce qui est déjà écrit reste valable. */
-    fun run(context: Context, stopped: () -> Boolean = { false }): Outcome = guarded(context) { prefs ->
+    /**
+     * [stopped] interrompt entre deux lots : ce qui est déjà écrit reste valable. Sans
+     * [snapshots], seulement les échantillons neufs : léger, pour le suivi toutes les 30 s ;
+     * trajets, pleins et agrégats, que l'Atoto recalcule à chaque demande, attendent le tour complet.
+     */
+    fun run(context: Context, snapshots: Boolean = true, stopped: () -> Boolean = { false }): Outcome = guarded(context) { prefs ->
         withAtoto(context, prefs) { client, status ->
             val files = TelemetryFiles(context)
-            val received = fetch(context, client, status, files, prefs, stopped, forceSnapshots = false)
+            val received = fetch(context, client, status, files, prefs, stopped, forceSnapshots = false, snapshots = snapshots)
+            if (snapshots) purge(context, files, prefs)
             if (stopped()) {
                 Outcome(true, "${samples(received)}, transfert à reprendre.")
             } else {
-                Outcome(true, "OK, ${samples(received)} reçu${if (received > 1) "s" else ""}.")
+                Outcome(true, "OK, ${samples(received)} reçu${if (received > 1) "s" else ""}.", ok = true)
             }
         }
     }
+
+    /** Le résumé, avec la position de la voiture seulement si l'utilisateur l'a choisi. */
+    fun summaryPath(context: Context): String =
+        if (TransferPrefs(context).shareCarPosition) "${LinkProtocol.SUMMARY}?${LinkProtocol.WITH_POSITION}=1" else LinkProtocol.SUMMARY
 
     /**
      * Transfert normal, puis contrôle complet des fichiers : réclame à l'Atoto ce qui manque et
@@ -108,15 +183,16 @@ object TelemetrySync {
             val files = TelemetryFiles(context)
             val received = fetch(context, client, status, files, prefs, { false }, forceSnapshots = true)
             val recovered = recover(client, files, prefs)
+            purge(context, files, prefs)
             val gaps = reportGaps(files, prefs)
-            Outcome(true, verdict(received, recovered, gaps))
+            Outcome(true, verdict(received, recovered, gaps), ok = true)
         }
     }
 
     private class Recovered(val count: Int, val days: Set<String>)
 
     private fun recover(client: AtotoClient, files: TelemetryFiles, prefs: TransferPrefs): Recovered {
-        val answer = client.request("GET", "/telemetry/inventory")
+        val answer = client.request("GET", LinkProtocol.INVENTORY)
         if (answer.status != 200) throw IOException("inventaire : ${answer.status}")
         val held = TransferProtocol.parseRanges(answer.body.toString(Charsets.UTF_8))
         val present = LongArrayBuilder()
@@ -129,13 +205,13 @@ object TelemetrySync {
         for (range in TransferProtocol.missingRanges(held, present.sorted(), prefs.lastSampleId)) {
             var after = range.first - 1
             while (after < range.last) {
-                val batch = client.request("GET", "/telemetry/samples?after=$after&upto=${range.last}&limit=$BATCH")
+                val batch = client.request("GET", "${LinkProtocol.SAMPLES}?after=$after&upto=${range.last}&limit=$BATCH")
                 if (batch.status != 200) throw IOException("échantillons : ${batch.status}")
-                val rows = batch.headers["x-count"]?.toIntOrNull() ?: throw IOException("lot illisible")
+                val rows = batch.headers[COUNT]?.toIntOrNull() ?: throw IOException("lot illisible")
                 if (rows == 0) break
                 days += files.appendSamples(client.csv(batch))
                 count += rows
-                after = batch.headers["x-last-id"]?.toLongOrNull() ?: throw IOException("lot illisible")
+                after = batch.headers[LAST_ID]?.toLongOrNull() ?: throw IOException("lot illisible")
             }
         }
         return Recovered(count, days)
@@ -153,7 +229,9 @@ object TelemetrySync {
         }
         val sorted = times.sorted()
         if (prefs.firstSampleTs == 0L) sorted.firstOrNull()?.let { prefs.firstSampleTs = it }
-        val first = prefs.firstSampleTs.takeIf { it > 0 } ?: Long.MAX_VALUE
+        // Ce que la conservation a retiré n'est pas un manque.
+        val first = prefs.firstSampleTs.takeIf { it > 0 }?.let { maxOf(it, prefs.retention.startMs(System.currentTimeMillis())) }
+            ?: Long.MAX_VALUE
         val buckets = TransferProtocol.parseBuckets(files.read(AGGREGATES).orEmpty())
         val gaps = TransferProtocol.detailGaps(buckets, sorted, first)
         if (gaps.isEmpty()) {
@@ -169,6 +247,15 @@ object TelemetrySync {
             })
         }
         return gaps
+    }
+
+    /** Retire le détail plus ancien que la durée de conservation. Renvoie le nombre de jours retirés. */
+    fun purge(context: Context, files: TelemetryFiles = TelemetryFiles(context), prefs: TransferPrefs = TransferPrefs(context)): Int {
+        val firstKept = prefs.retention.firstKeptDay(System.currentTimeMillis()) ?: return 0
+        val expired = Retention.expired(files.sampleFiles(), firstKept)
+        expired.forEach(files::delete)
+        if (expired.isNotEmpty()) CompanionLog.add(context, "Conservation : ${expired.size} jour(s) de détail retiré(s) du téléphone.")
+        return expired.size
     }
 
     private fun verdict(received: Int, recovered: Recovered, gaps: List<TransferProtocol.Gap>): String = buildString {
@@ -193,7 +280,7 @@ object TelemetrySync {
     private fun samples(count: Int) = if (count > 1) "$count échantillons" else "$count échantillon"
 
     private fun guarded(context: Context, block: (TransferPrefs) -> Outcome): Outcome {
-        if (!running.compareAndSet(false, true)) return Outcome(true, "Transfert déjà en cours.")
+        if (!running.compareAndSet(false, true)) return Outcome(true, "Transfert déjà en cours.", ok = true)
         val prefs = TransferPrefs(context)
         val outcome = try {
             block(prefs)
@@ -220,7 +307,7 @@ object TelemetrySync {
         for (route in AtotoClient.routes(context, prefs.manualIp)) {
             val client = AtotoClient(route, pin, token)
             val answer = try {
-                client.request("GET", "/telemetry/status")
+                client.request("GET", LinkProtocol.STATUS)
             } catch (e: SSLException) {
                 // Rien n'a été envoyé : la poignée de main s'arrête avant le jeton.
                 return Outcome(false, "Un appareil répond (${route.label}), mais ce n'est pas l'Atoto associé.")
@@ -252,29 +339,31 @@ object TelemetrySync {
         prefs: TransferPrefs,
         stopped: () -> Boolean,
         forceSnapshots: Boolean,
+        snapshots: Boolean = true,
     ): Int {
         var confirmed = status.getLong("ackId")
         var after = TransferProtocol.resumeAfter(prefs.lastSampleId, confirmed, status.getLong("lastId"))
         var received = 0
         while (!stopped()) {
-            val answer = client.request("GET", "/telemetry/samples?after=$after&limit=$BATCH")
+            val answer = client.request("GET", "${LinkProtocol.SAMPLES}?after=$after&limit=$BATCH")
             if (answer.status != 200) throw IOException("échantillons : ${answer.status}")
-            val count = answer.headers["x-count"]?.toIntOrNull() ?: throw IOException("lot illisible")
+            val count = answer.headers[COUNT]?.toIntOrNull() ?: throw IOException("lot illisible")
             if (count == 0) break
             val csv = client.csv(answer)
             files.appendSamples(csv)
             noteFirstSample(prefs, csv)
-            after = answer.headers["x-last-id"]?.toLongOrNull() ?: throw IOException("lot illisible")
+            after = answer.headers[LAST_ID]?.toLongOrNull() ?: throw IOException("lot illisible")
             prefs.lastSampleId = after
             received += count
             // Après l'écriture : l'Atoto peut alors agréger ces échantillons.
-            client.request("POST", "/telemetry/ack?id=$after")
+            client.request("POST", "${LinkProtocol.ACK}?id=$after")
             confirmed = after
             if (count < BATCH) break
         }
         if (stopped()) return received
         // Confirmation perdue la fois précédente : rien de neuf, mais l'Atoto doit le savoir.
-        if (confirmed < after) client.request("POST", "/telemetry/ack?id=$after")
+        if (confirmed < after) client.request("POST", "${LinkProtocol.ACK}?id=$after")
+        if (!snapshots) return received
         for ((path, name) in SNAPSHOTS) {
             // Fichier absent : on ne peut plus se fier à la version retenue.
             val version = prefs.snapshotVersion(name).takeUnless { forceSnapshots || !files.exists(name) }
@@ -284,7 +373,7 @@ object TelemetrySync {
             files.replace(name, client.csv(answer))
             prefs.saveSnapshotVersion(name, answer.headers["etag"])
         }
-        val summary = client.request("GET", "/telemetry/summary")
+        val summary = client.request("GET", summaryPath(context))
         if (summary.status == 200) HomeAssistant.saveSummary(context, summary.body.toString(Charsets.UTF_8))
         return received
     }
@@ -308,13 +397,16 @@ object TelemetrySync {
         fun sorted(): LongArray = items.copyOf(size).also { it.sort() }
     }
 
-    private const val AGGREGATES = "agregats.csv"
-    private const val GAPS = "manques.csv"
+    private const val AGGREGATES = TelemetryFormat.AGGREGATES_FILE
+    private const val GAPS = TelemetryFormat.GAPS_FILE
+    // En-têtes lus en minuscules (TransferProtocol.parseAnswer).
+    private val COUNT = LinkProtocol.HEADER_COUNT.lowercase()
+    private val LAST_ID = LinkProtocol.HEADER_LAST_ID.lowercase()
 
     // Un trajet ou un ticket peut changer après coup : remplacés entiers, s'ils ont changé.
     private val SNAPSHOTS = listOf(
-        "/telemetry/trips" to "trajets.csv",
-        "/telemetry/refuels" to "pleins.csv",
-        "/telemetry/aggregates" to AGGREGATES,
+        LinkProtocol.TRIPS to TelemetryFormat.TRIPS_FILE,
+        LinkProtocol.REFUELS to TelemetryFormat.REFUELS_FILE,
+        LinkProtocol.AGGREGATES to AGGREGATES,
     )
 }

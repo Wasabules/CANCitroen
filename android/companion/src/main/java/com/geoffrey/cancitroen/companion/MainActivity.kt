@@ -1,34 +1,49 @@
 package com.geoffrey.cancitroen.companion
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.car.app.connection.CarConnection
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Tab
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -53,6 +68,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         CarConnection(this).type.observe(this) { type ->
+            // Écran ouvert pendant Android Auto : le suivi peut démarrer, l'app est au premier plan.
+            if (type == CarConnection.CONNECTION_TYPE_PROJECTION && !CarSessionService.status.running) {
+                CarSessionService.start(this, "Android Auto, écran du compagnon ouvert")
+            }
             carState.value = when (type) {
                 CarConnection.CONNECTION_TYPE_PROJECTION -> "connecté"
                 CarConnection.CONNECTION_TYPE_NOT_CONNECTED -> "non connecté"
@@ -61,20 +80,33 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
+                var tab by rememberSaveable { mutableIntStateOf(0) }
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(MaterialTheme.colorScheme.background)
-                        .safeDrawingPadding()
-                        .padding(16.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                        .safeDrawingPadding(),
                 ) {
-                    TransferSection()
-                    HorizontalDivider()
-                    HomeAssistantSection()
-                    HorizontalDivider()
-                    LinkTestSection(carState.value, onShare = ::share)
+                    PrimaryTabRow(selectedTabIndex = tab) {
+                        TABS.forEachIndexed { index, title ->
+                            Tab(selected = tab == index, onClick = { tab = index }, text = { Text(title) })
+                        }
+                    }
+                    Box(modifier = Modifier.weight(1f).padding(horizontal = 16.dp).padding(top = 12.dp)) {
+                        when (tab) {
+                            0 -> VehicleTab()
+                            1 -> Page { TrackingSection(onShare = ::share) }
+                            else -> Page {
+                                TransferSection()
+                                RetentionSetting()
+                                VehicleOptions()
+                                HorizontalDivider()
+                                HomeAssistantSection()
+                                HorizontalDivider()
+                                LinkTestSection(carState.value, onShare = ::share)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -85,6 +117,240 @@ class MainActivity : ComponentActivity() {
             .setType("text/plain")
             .putExtra(Intent.EXTRA_TEXT, report)
         startActivity(Intent.createChooser(send, "Partager le rapport"))
+    }
+}
+
+private const val JOURNAL_LINES = 30
+private val TABS = listOf("Voiture", "Suivi", "Réglages")
+
+@Composable
+private fun Page(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        content = content,
+    )
+}
+
+/** Ce que l'utilisateur choisit de la voiture : son carburant, et le partage de sa position. */
+@Composable
+private fun VehicleOptions() {
+    val context = LocalContext.current
+    val prefs = remember { TransferPrefs(context) }
+    var fuel by remember { mutableStateOf(prefs.fuelType) }
+    var position by remember { mutableStateOf(prefs.shareCarPosition) }
+
+    Text("Carburant de la voiture, pour le CO₂ des trajets", color = MaterialTheme.colorScheme.onBackground)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        for (choice in FuelType.entries) {
+            FilterChip(
+                selected = fuel == choice,
+                onClick = {
+                    prefs.fuelType = choice
+                    fuel = choice
+                },
+                label = { Text(choice.label) },
+            )
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Switch(
+            checked = position,
+            onCheckedChange = {
+                prefs.shareCarPosition = it
+                position = it
+            },
+        )
+        Text("Position de la voiture", color = MaterialTheme.colorScheme.onBackground)
+    }
+    Text(
+        "Le GPS de l'Atoto, envoyé chiffré au téléphone pendant les trajets, puis à Home Assistant s'il est connecté : où la voiture est garée, et ses trajets sur la carte. Désactivé par défaut ; une fois coupé, plus aucune position ne part.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+/** La durée de conservation du détail ; ce qui serait retiré est d'abord annoncé. */
+@Composable
+private fun RetentionSetting() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val prefs = remember { TransferPrefs(context) }
+    var retention by remember { mutableStateOf(prefs.retention) }
+    var pending by remember { mutableStateOf<Pair<Retention, Int>?>(null) }
+    var message by remember { mutableStateOf("") }
+
+    fun apply(choice: Retention) {
+        prefs.retention = choice
+        retention = choice
+        scope.launch {
+            val removed = withContext(Dispatchers.IO) { TelemetrySync.purge(context) }
+            message = if (removed > 0) "$removed jour(s) de détail retiré(s) du téléphone." else ""
+        }
+    }
+
+    Text("Conserver le détail à 5 s sur le téléphone", color = MaterialTheme.colorScheme.onBackground)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        for (choice in Retention.entries) {
+            FilterChip(
+                selected = retention == choice,
+                onClick = {
+                    scope.launch {
+                        val expired = withContext(Dispatchers.IO) {
+                            choice.firstKeptDay(System.currentTimeMillis())
+                                ?.let { Retention.expired(TelemetryFiles(context).sampleFiles(), it).size } ?: 0
+                        }
+                        if (expired > 0) pending = choice to expired else apply(choice)
+                    }
+                },
+                label = { Text(choice.label) },
+            )
+        }
+    }
+    Text(
+        "Au-delà, seuls les fichiers echantillons-… sont retirés : trajets, pleins et agrégats restent, et les graphiques s'en servent. Copie le détail sur le PC avant pour le garder.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    if (message.isNotEmpty()) Text(message, color = MaterialTheme.colorScheme.onBackground)
+    pending?.let { (choice, count) ->
+        AlertDialog(
+            onDismissRequest = { pending = null },
+            title = { Text("Retirer $count jour(s) de détail ?") },
+            text = {
+                Text("Les fichiers d'échantillons d'avant le ${choice.firstKeptDay(System.currentTimeMillis())} seront supprimés du téléphone. Les copies déjà faites sur le PC ne sont pas touchées.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pending = null
+                    apply(choice)
+                }) { Text("Retirer") }
+            },
+            dismissButton = { TextButton(onClick = { pending = null }) { Text("Annuler") } },
+        )
+    }
+}
+
+@SuppressLint("BatteryLife") // Exemption demandée à l'utilisateur : le suivi doit démarrer seul en voiture.
+@Composable
+private fun TrackingSection(onShare: (String) -> Unit) {
+    val context = LocalContext.current
+    var rows by remember { mutableStateOf(SessionReport.rows(context)) }
+    var checks by remember { mutableStateOf(Reliability.checks(context)) }
+    var journal by remember { mutableStateOf(CompanionLog.tail(context, JOURNAL_LINES)) }
+    var running by remember { mutableStateOf(CarSessionService.status.running) }
+    var car by remember { mutableStateOf(TransferPrefs(context).carBluetooth) }
+    var notice by remember { mutableStateOf("") }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        checks = Reliability.checks(context)
+        notice = if (granted) "" else "Autorisation refusée : à donner dans les réglages de l'app, rubrique Autorisations."
+    }
+    val settings = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        checks = Reliability.checks(context)
+    }
+    val appDetails = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
+
+    // Le suivi tourne sans cet écran : son état se relit.
+    LaunchedEffect(Unit) {
+        while (true) {
+            rows = SessionReport.rows(context)
+            checks = Reliability.checks(context)
+            journal = CompanionLog.tail(context, JOURNAL_LINES)
+            running = CarSessionService.status.running
+            car = TransferPrefs(context).carBluetooth
+            delay(2_000)
+        }
+    }
+
+    fun fix(fix: Reliability.Fix) {
+        notice = ""
+        when (fix) {
+            Reliability.Fix.BATTERY -> settings.launch(
+                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}")),
+            )
+            Reliability.Fix.BLUETOOTH -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                permission.launch(Manifest.permission.BLUETOOTH_CONNECT)
+            }
+            Reliability.Fix.NOTIFICATIONS -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                permission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                settings.launch(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
+            }
+            Reliability.Fix.APP_SETTINGS -> settings.launch(appDetails)
+        }
+    }
+
+    Text("Suivi de la voiture", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+    Text(
+        "Démarre seul quand le téléphone se connecte à la voiture : l'Atoto est interrogé toutes les 30 s, Home Assistant reçoit chaque changement, l'historique arrive toutes les 10 min.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    for ((label, value) in rows) {
+        Row {
+            Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(132.dp))
+            Text(value, color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.weight(1f))
+        }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (running) {
+            OutlinedButton(onClick = { CarSessionService.stop() }) { Text("Arrêter le suivi") }
+        } else {
+            Button(
+                onClick = {
+                    notice = if (CarSessionService.start(context, "démarré à la main")) "" else "Associe d'abord le téléphone à l'Atoto, plus bas."
+                },
+            ) { Text("Démarrer le suivi") }
+        }
+    }
+    if (notice.isNotEmpty()) Text(notice, color = MaterialTheme.colorScheme.error)
+
+    Text("Fiabilité", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+    for (check in checks) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "${check.label} : ${if (check.ok) "OK" else "à régler"}",
+                    color = if (check.ok) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.error,
+                )
+                Text(check.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (!check.ok) TextButton(onClick = { fix(check.fix) }) { Text("Régler") }
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            if (car.isEmpty()) "Voiture Bluetooth : reconnue au premier trajet suivi." else "Voiture Bluetooth : ${CarSessionService.maskedAddress(car)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        if (car.isNotEmpty()) {
+            TextButton(onClick = {
+                TransferPrefs(context).carBluetooth = ""
+                car = ""
+            }) { Text("Oublier") }
+        }
+    }
+
+    Text("Journal", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(
+            enabled = journal.isNotEmpty(),
+            onClick = { onShare(CompanionLog.tail(context, 400).joinToString("\n")) },
+        ) { Text("Partager le journal") }
+        TextButton(onClick = {
+            CompanionLog.clear(context)
+            journal = emptyList()
+        }) { Text("Effacer") }
+    }
+    SelectionContainer {
+        Text(
+            journal.joinToString("\n").ifEmpty { "Rien pour l'instant." },
+            fontFamily = FontFamily.Monospace,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onBackground,
+        )
     }
 }
 
@@ -142,7 +408,7 @@ private fun TransferSection() {
                     TransferScheduler.refresh(context)
                 },
             )
-            Text("Automatique pendant Android Auto", color = MaterialTheme.colorScheme.onBackground)
+            Text("Transfert pendant les trajets", color = MaterialTheme.colorScheme.onBackground)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(enabled = !busy, onClick = { work({ message = it }) { TelemetrySync.run(context).message } }) {
@@ -163,7 +429,7 @@ private fun TransferSection() {
         ) { Text("Vérifier et récupérer") }
         Text(
             "Fichiers dans Documents/CANCitroen, à copier sur le PC. « Vérifier et récupérer » redemande ce qui manque à l'Atoto, y compris les fichiers déplacés sur le PC tant qu'il les garde (7 jours)." +
-                if (lastCheck.isNotEmpty()) "\nDernière vérification automatique : $lastCheck" else "",
+                if (lastCheck.isNotEmpty()) "\nDernière vérification périodique : $lastCheck" else "",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -232,7 +498,7 @@ private fun HomeAssistantSection() {
     Text("Home Assistant", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
     if (connected) {
         Text(
-            "La voiture est un appareil « Citroën C2 » sur ${HomeAssistant.address(context)}. Publication après chaque transfert et à chaque changement d'état, sans position GPS.",
+            "La voiture est un appareil « Citroën C2 » sur ${HomeAssistant.address(context)}. Publication pendant les trajets, à chaque changement et toutes les 5 minutes au moins, sans position GPS.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -287,7 +553,7 @@ private fun HomeAssistantSection() {
             Button(
                 enabled = !busy,
                 onClick = {
-                    work({ message = it }) { HomeAssistant.publish(context, TransferScheduler.isProjecting(context), force = true) }
+                    work({ message = it }) { HomeAssistant.publish(context, TransferScheduler.isProjecting(context), force = true).message }
                 },
             ) { Text(if (busy) "Envoi…" else "Envoyer maintenant") }
             OutlinedButton(

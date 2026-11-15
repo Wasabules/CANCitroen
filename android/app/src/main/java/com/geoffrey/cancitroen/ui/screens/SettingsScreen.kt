@@ -279,6 +279,7 @@ fun SettingsScreen(
                 // Re-derive les états permission à chaque ON_RESUME — sinon
                 // après retour du Settings system les checkmarks restent ✗.
                 val locOk = remember(permTick) { PermissionsHelper.isLocationGranted(ctx) }
+                val bgLocOk = remember(permTick) { PermissionsHelper.isBackgroundLocationGranted(ctx) }
                 val notifOk = remember(permTick) { PermissionsHelper.isNotificationGranted(ctx) }
                 val battOk = remember(permTick) { PermissionsHelper.isIgnoringBatteryOptimizations(ctx) }
                 val notifLisOk = remember(permTick) { PermissionsHelper.isNotificationListenerEnabled(ctx) }
@@ -296,6 +297,11 @@ fun SettingsScreen(
                         onActivate = { PermissionsHelper.openAppDetails(ctx) },
                     )
                     PermissionRow(
+                        label = "Localisation toujours autorisée (position pour le compagnon)",
+                        granted = bgLocOk,
+                        onActivate = { PermissionsHelper.openAppDetails(ctx) },
+                    )
+                    PermissionRow(
                         label = "Notifications",
                         granted = notifOk,
                         onActivate = { PermissionsHelper.openAppDetails(ctx) },
@@ -309,6 +315,11 @@ fun SettingsScreen(
                         label = "Accès notifications (volant + Android Auto)",
                         granted = notifLisOk,
                         onActivate = { PermissionsHelper.openNotificationListenerSettings(ctx) },
+                    )
+                    Text(
+                        "Localisation toujours autorisée : seulement si le compagnon partage la position de la voiture (Autorisations → Position → Toujours autoriser). Sans elle, la position reste celle du moment où Android Auto a pris l'écran.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
                         "Le dernier est requis pour que les boutons SUIVANT/PRÉCÉDENT/PLAY au volant agissent sur Android Auto. Tape \"Activer\" puis coche CANCitroen dans la liste.",

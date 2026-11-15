@@ -2,6 +2,7 @@ package com.geoffrey.cancitroen.link
 
 import android.os.Process
 import android.util.Log
+import com.geoffrey.cancitroen.shared.LinkProtocol
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,13 +32,13 @@ import kotlin.concurrent.thread
  *    de l'Atoto et pour le téléphone associé (voir [TelemetrySource]).
  */
 object LinkServer {
-    const val PORT = 8765
-    const val TLS_PORT = 8766
+    const val PORT = LinkProtocol.PROBE_PORT
+    const val TLS_PORT = LinkProtocol.TLS_PORT
     private const val TAG = "LinkProbe"
     private const val SOCKET_TIMEOUT_MS = 5_000
     private const val MAX_CONNECTIONS = 4
     private const val MAX_HEADER_LINES = 32
-    private const val MAX_BATCH = 5_000
+    private const val MAX_BATCH = LinkProtocol.MAX_BATCH
     // Un essai de code raté bloque sa connexion : au plus 4 essais par seconde.
     private const val AUTH_FAILURE_DELAY_MS = 1_000L
     // Environ 1 Mo/s : la projection d'Android Auto passe par le même Wi-Fi.
@@ -57,7 +58,7 @@ object LinkServer {
         data object Ping : Route
         data class Blob(val kb: Int) : Route
         data object TelemetryStatus : Route
-        data object TelemetrySummary : Route
+        data class TelemetrySummary(val withPosition: Boolean) : Route
         data object TelemetryInventory : Route
         data class TelemetrySamples(val afterId: Long, val limit: Int, val upToId: Long = Long.MAX_VALUE) : Route
         data class TelemetryTable(val table: TelemetrySource.Table) : Route
@@ -222,14 +223,14 @@ object LinkServer {
                 out.write(header("200 OK", "application/json", body.length.toLong()))
                 out.write(body.toByteArray())
             }
-            Route.TelemetrySummary -> {
-                val body = runBlocking { source.summary() }.toByteArray()
+            is Route.TelemetrySummary -> {
+                val body = runBlocking { source.summary(route.withPosition) }.toByteArray()
                 out.write(header("200 OK", "application/json", body.size.toLong()))
                 out.write(body)
             }
             is Route.TelemetrySamples -> {
                 val batch = runBlocking { source.samples(route.afterId, route.upToId, route.limit) }
-                val extra = "X-Count: ${batch.count}\r\nX-Last-Id: ${batch.lastId}\r\n"
+                val extra = "${LinkProtocol.HEADER_COUNT}: ${batch.count}\r\n${LinkProtocol.HEADER_LAST_ID}: ${batch.lastId}\r\n"
                 sendCsv(batch.csv, extra, out)
             }
             Route.TelemetryInventory -> {
@@ -290,24 +291,24 @@ object LinkServer {
         }
         return when (parts[0]) {
             "GET" -> when (path) {
-                "/ping" -> Route.Ping
-                "/blob" -> params["kb"]?.toIntOrNull()?.let { Route.Blob(it.coerceIn(1, 4096)) } ?: Route.NotFound
-                "/telemetry/status" -> Route.TelemetryStatus
-                "/telemetry/summary" -> Route.TelemetrySummary
-                "/telemetry/inventory" -> Route.TelemetryInventory
-                "/telemetry/samples" -> {
+                LinkProtocol.PING -> Route.Ping
+                LinkProtocol.BLOB -> params["kb"]?.toIntOrNull()?.let { Route.Blob(it.coerceIn(1, 4096)) } ?: Route.NotFound
+                LinkProtocol.STATUS -> Route.TelemetryStatus
+                LinkProtocol.SUMMARY -> Route.TelemetrySummary(params[LinkProtocol.WITH_POSITION] == "1")
+                LinkProtocol.INVENTORY -> Route.TelemetryInventory
+                LinkProtocol.SAMPLES -> {
                     val after = params["after"]?.toLongOrNull()?.takeIf { it >= 0 } ?: return Route.NotFound
                     val limit = params["limit"]?.toIntOrNull()?.coerceIn(1, MAX_BATCH) ?: MAX_BATCH
                     Route.TelemetrySamples(after, limit, params["upto"]?.toLongOrNull() ?: Long.MAX_VALUE)
                 }
-                "/telemetry/aggregates" -> Route.TelemetryTable(TelemetrySource.Table.AGGREGATES)
-                "/telemetry/trips" -> Route.TelemetryTable(TelemetrySource.Table.TRIPS)
-                "/telemetry/refuels" -> Route.TelemetryTable(TelemetrySource.Table.REFUELS)
+                LinkProtocol.AGGREGATES -> Route.TelemetryTable(TelemetrySource.Table.AGGREGATES)
+                LinkProtocol.TRIPS -> Route.TelemetryTable(TelemetrySource.Table.TRIPS)
+                LinkProtocol.REFUELS -> Route.TelemetryTable(TelemetrySource.Table.REFUELS)
                 else -> Route.NotFound
             }
             "POST" -> when (path) {
-                "/telemetry/ack" -> params["id"]?.toLongOrNull()?.takeIf { it >= 0 }?.let { Route.TelemetryAck(it) } ?: Route.NotFound
-                "/telemetry/pair" -> params["proof"]?.let { Route.TelemetryPair(it) } ?: Route.NotFound
+                LinkProtocol.ACK -> params["id"]?.toLongOrNull()?.takeIf { it >= 0 }?.let { Route.TelemetryAck(it) } ?: Route.NotFound
+                LinkProtocol.PAIR -> params["proof"]?.let { Route.TelemetryPair(it) } ?: Route.NotFound
                 else -> Route.NotFound
             }
             else -> Route.NotFound

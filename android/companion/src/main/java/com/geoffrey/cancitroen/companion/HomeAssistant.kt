@@ -1,7 +1,11 @@
 package com.geoffrey.cancitroen.companion
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.Build
+import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.io.IOException
@@ -23,23 +27,86 @@ import javax.net.ssl.SSLException
  * pas gardé ; le webhook reçu en échange ne permet que d'écrire ces capteurs.
  *
  * Bloquant : hors du thread principal. Serveur injoignable (adresse locale, sur la route) :
- * le dernier état attend, et part à la prochaine vérification qui l'atteint.
+ * le dernier état attend, et part au prochain essai qui l'atteint.
  */
 object HomeAssistant {
+    /** [sent] : faux si rien n'est parti, l'état n'ayant pas changé depuis le dernier envoi. */
+    class Published(val ok: Boolean, val sent: Boolean, val message: String)
+
     private const val CONNECT_TIMEOUT_MS = 8_000
     private const val READ_TIMEOUT_MS = 15_000
     private const val GONE = 410
     private const val UNKNOWN_WEBHOOK_LIMIT = 3
     private const val API_MARK = "API running"
+    private const val MAX_PENDING_EVENTS = 20
 
     private fun prefs(context: Context) = context.getSharedPreferences("home_assistant", Context.MODE_PRIVATE)
 
     fun isConnected(context: Context): Boolean = prefs(context).contains("webhook")
     fun lastResult(context: Context): String = prefs(context).getString("resultat", "").orEmpty()
 
-    /** À chaque transfert : le résumé de l'Atoto attend ici qu'un serveur soit joignable. */
+    /** Heure du dernier envoi accepté par Home Assistant ; 0 si aucun. */
+    fun lastSentMs(context: Context): Long = prefs(context).getLong("dernier_envoi", 0)
+
+    /** À chaque interrogation de l'Atoto : le résumé attend ici qu'un serveur soit joignable. */
     fun saveSummary(context: Context, summary: String) {
         prefs(context).edit().putString("resume", summary).apply()
+        val parsed = parse(summary) ?: return
+        queue(context, TripEvents.fromSummary(parsed, eventState(context), TransferPrefs(context).fuelType))
+    }
+
+    /** Fin du suivi : le trajet que l'Atoto n'a pas encore clos est annoncé avec ses derniers chiffres. */
+    fun noteSessionEnd(context: Context, endTs: Long) {
+        val parsed = lastSummary(context)?.let(::parse) ?: return
+        queue(context, TripEvents.fromSessionEnd(parsed, eventState(context), endTs, TransferPrefs(context).fuelType))
+    }
+
+    private fun parse(text: String): JSONObject? = try {
+        JSONObject(text)
+    } catch (_: JSONException) {
+        null
+    }
+
+    private fun eventState(context: Context): TripEvents.State {
+        val store = prefs(context)
+        return TripEvents.State(store.getLong("evt_trajet", 0), store.getLong("evt_plein", 0), store.getBoolean("evt_pret", false))
+    }
+
+    /** Les événements attendent ici un Home Assistant joignable ; les plus anciens partent d'abord. */
+    @Synchronized
+    private fun queue(context: Context, result: TripEvents.Result) {
+        val store = prefs(context)
+        val pending = pendingEvents(context)
+        for (event in result.events) {
+            pending.put(JSONObject().put("type", event.type).put("data", event.data))
+            CompanionLog.add(context, "Événement en attente pour Home Assistant : ${event.type}.")
+        }
+        while (pending.length() > MAX_PENDING_EVENTS) pending.remove(0)
+        store.edit()
+            .putString("evenements", pending.toString())
+            .putLong("evt_trajet", result.state.tripStart)
+            .putLong("evt_plein", result.state.refuelTs)
+            .putBoolean("evt_pret", result.state.initialized)
+            .apply()
+    }
+
+    private fun pendingEvents(context: Context): JSONArray = try {
+        JSONArray(prefs(context).getString("evenements", "[]"))
+    } catch (_: JSONException) {
+        JSONArray()
+    }
+
+    /** Le dernier résumé reçu de l'Atoto, même sans Home Assistant connecté. */
+    fun lastSummary(context: Context): String? = prefs(context).getString("resume", null)
+
+    /** Dernière réponse de l'Atoto ; 0 si jamais. */
+    fun lastContactMs(context: Context): Long = prefs(context).getLong("contact", 0)
+
+    /** Ce que le téléphone sait de la liaison : l'Atoto répond-il, et depuis quand l'a-t-il entendu ? */
+    fun saveLink(context: Context, linked: Boolean, contactTs: Long?) {
+        prefs(context).edit().putBoolean("liee", linked).apply {
+            if (contactTs != null) putLong("contact", contactTs)
+        }.apply()
     }
 
     fun address(context: Context): String = prefs(context).getString("adresse", "").orEmpty()
@@ -155,7 +222,7 @@ object HomeAssistant {
                     .remove("publie")
                     .remove("capteurs_version")
                     .commit()
-                publish(context, TransferScheduler.isProjecting(context), force = true)
+                publish(context, TransferScheduler.isProjecting(context), force = true).message
             } catch (e: JSONException) {
                 "Réponse illisible de Home Assistant : ${e.message}"
             }
@@ -166,29 +233,46 @@ object HomeAssistant {
 
     /** Seulement sur ce téléphone : l'appareil reste dans Home Assistant, à supprimer depuis ses réglages. */
     fun disconnect(context: Context) {
-        prefs(context).edit().remove("webhook").remove("cloudhook").remove("distant").remove("publie").remove("resultat").remove("webhook_inconnu").commit()
+        prefs(context).edit().remove("webhook").remove("cloudhook").remove("distant").remove("publie").remove("resultat").remove("webhook_inconnu")
+            .remove("dernier_envoi").remove("dernier_envoi_ok").remove("position_envoyee").commit()
     }
 
-    /** Renvoie le compte rendu. Sans rien de neuf et sans [force], n'envoie rien. */
-    fun publish(context: Context, projecting: Boolean, force: Boolean = false): String {
+    /**
+     * Envoie le dernier état connu. Sans rien de neuf et sans [force], n'envoie rien : le suivi
+     * force un envoi de temps en temps, pour que Home Assistant voie la liaison vivre.
+     */
+    fun publish(context: Context, projecting: Boolean, force: Boolean = false): Published {
         val store = prefs(context)
-        if (!store.contains("webhook")) return "Home Assistant non connecté."
+        if (!store.contains("webhook")) return Published(false, false, "Home Assistant non connecté.")
         val summary = store.getString("resume", null) ?: "{}"
-        val fingerprint = "$projecting|$summary"
-        if (!force && store.getString("publie", null) == fingerprint) return lastResult(context)
+        val linked = store.getBoolean("liee", false)
+        val contact = store.getLong("contact", 0).takeIf { it > 0 }
+        // Sans l'heure du contact : elle change à chaque interrogation de l'Atoto.
+        val fingerprint = "$projecting|$linked|$summary"
+        // Un événement ou une position en attente part même sans autre changement.
+        val extras = pendingEvents(context).length() > 0 || newLocation(context, summary) != null
+        if (!force && !extras && store.getString("publie", null) == fingerprint) return Published(true, false, lastResult(context))
+        var ok = false
         val message = try {
-            send(context, HaSnapshot(JSONObject(summary), projecting))?.also {
+            send(context, HaSnapshot(JSONObject(summary), projecting, linked, contact))?.also {
+                ok = true
                 store.edit().putString("publie", fingerprint).apply()
             } ?: "L'intégration a été supprimée dans Home Assistant : à reconnecter."
         } catch (e: IOException) {
-            // Même sans rien de neuf, la prochaine tâche doit retenter : ce message serait sinon périmé.
+            // Même sans rien de neuf, le prochain essai doit renvoyer : ce message serait sinon périmé.
             store.edit().remove("publie").apply()
             "Envoi impossible, nouvel essai plus tard : ${e.message}"
         } catch (e: JSONException) {
             "Réponse illisible de Home Assistant : ${e.message}"
         }
+        // Les échecs, et le retour à la normale : pas chaque envoi réussi.
+        if (!ok || !store.getBoolean("dernier_envoi_ok", true)) CompanionLog.add(context, "Home Assistant : $message")
         val at = SimpleDateFormat("dd/MM HH:mm:ss", Locale.FRANCE).format(Date())
-        return "$at · $message".also { store.edit().putString("resultat", it).apply() }
+        val result = "$at · $message"
+        store.edit().putString("resultat", result).putBoolean("dernier_envoi_ok", ok).apply {
+            if (ok) putLong("dernier_envoi", System.currentTimeMillis())
+        }.apply()
+        return Published(ok, true, result)
     }
 
     /** Null si Home Assistant ne reconnaît plus le webhook. */
@@ -220,7 +304,46 @@ object HomeAssistant {
         for (sensor in HaPayloads.notRegistered(JSONObject(answer.text))) {
             postWebhook(context, HaPayloads.registerSensor(sensor, snapshot).toString())
         }
-        return "OK, ${HaPayloads.sensors.size} capteurs à jour."
+        val located = sendLocation(context, snapshot.summary)
+        val fired = sendEvents(context)
+        return "OK, ${HaPayloads.sensors.size} capteurs à jour" +
+            (if (located) ", position" else "") +
+            (if (fired > 0) ", $fired événement${if (fired > 1) "s" else ""}" else "") + "."
+    }
+
+    /** Les événements en attente, dans l'ordre ; un échec garde le reste pour le prochain envoi. */
+    @Synchronized
+    private fun sendEvents(context: Context): Int {
+        val pending = pendingEvents(context)
+        var sent = 0
+        while (sent < pending.length()) {
+            val event = pending.getJSONObject(sent)
+            val answer = postWebhook(context, HaPayloads.fireEvent(event.getString("type"), event.getJSONObject("data")).toString())
+            if (answer.code !in 200..299) break
+            sent++
+        }
+        if (sent > 0) {
+            val rest = JSONArray()
+            for (i in sent until pending.length()) rest.put(pending.get(i))
+            prefs(context).edit().putString("evenements", rest.toString()).apply()
+        }
+        return sent
+    }
+
+    /** La position de la voiture, si l'utilisateur l'a choisi et qu'elle a bougé depuis le dernier envoi. */
+    private fun sendLocation(context: Context, summary: JSONObject): Boolean {
+        val location = newLocation(context, summary.toString()) ?: return false
+        val answer = postWebhook(context, location.toString())
+        if (answer.code !in 200..299) return false
+        prefs(context).edit().putString("position_envoyee", location.getJSONObject("data").getJSONArray("gps").toString()).apply()
+        return true
+    }
+
+    private fun newLocation(context: Context, summary: String): JSONObject? {
+        if (!TransferPrefs(context).shareCarPosition) return null
+        val location = parse(summary)?.let(HaPayloads::location) ?: return null
+        val gps = location.getJSONObject("data").getJSONArray("gps").toString()
+        return location.takeIf { gps != prefs(context).getString("position_envoyee", null) }
     }
 
     private fun forget(context: Context): String? {
@@ -269,7 +392,9 @@ object HomeAssistant {
         authorization: String?,
         headers: List<Pair<String, String>>,
     ): Answer {
-        val connection = URL(url).openConnection() as HttpURLConnection
+        val target = URL(url)
+        val network = if (HaUrl.isLocal(target.host)) null else internetNetwork(context)
+        val connection = (network?.openConnection(target) ?: target.openConnection()) as HttpURLConnection
         try {
             connection.requestMethod = method
             connection.connectTimeout = CONNECT_TIMEOUT_MS
@@ -297,6 +422,21 @@ object HomeAssistant {
         } finally {
             connection.disconnect()
         }
+    }
+
+    /**
+     * Un réseau qui mène vraiment à Internet. Le Wi-Fi de l'Atoto n'y mène pas, et certains
+     * téléphones le prennent quand même comme réseau par défaut : on passe alors par le mobile.
+     * Null : aucun réseau validé, on laisse faire le système.
+     */
+    private fun internetNetwork(context: Context): Network? {
+        val connectivity = context.getSystemService(ConnectivityManager::class.java)
+        fun reachesInternet(network: Network) = connectivity.getNetworkCapabilities(network)?.let {
+            it.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                it.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        } == true
+        return connectivity.activeNetwork?.takeIf(::reachesInternet)
+            ?: connectivity.allNetworks.firstOrNull(::reachesInternet)
     }
 
     private fun appVersion(context: Context): String =
